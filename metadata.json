@@ -1,0 +1,7 @@
+{
+  "name": "SnapCrop",
+  "description": "Silent screenshot capture via Volume Down long-press or 3-finger swipe down overlay with transparent cropping canvas and native sharing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

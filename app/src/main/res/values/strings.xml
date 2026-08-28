@@ -1,0 +1,45 @@
+<resources>
+    <string name="app_name">SnapCrop</string>
+    <string name="accessibility_service_name">SnapCrop Instant Capture Service</string>
+    <string name="accessibility_service_description">Monitors Volume Down long-press and 3-finger swipe gestures to capture the screen silently, open the cropping overlay, and share selections seamlessly.</string>
+    <string name="hero_badge">Background System Utility</string>
+    <string name="hero_subtitle">Long-press Volume Down (700ms) or swipe down with 3 fingers (> 300px) anywhere to capture without system dialogs, crop with precision cyan guides, and share immediately.</string>
+    <string name="title_setup">Setup &amp; Permissions</string>
+    <string name="desc_setup">Follow these steps to activate silent key capture and cropping overlays.</string>
+    <string name="step_accessibility_title">1. Enable Accessibility Service</string>
+    <string name="step_accessibility_desc">Required to detect the Volume Down long-press and capture screen content silently without MediaProjection prompts.</string>
+    <string name="btn_open_accessibility">Open Accessibility Settings</string>
+    <string name="step_battery_title">2. Ignore Battery Optimization</string>
+    <string name="step_battery_desc">Prevents Android from killing the background service when the phone is idle.</string>
+    <string name="btn_battery_optimization">Disable Battery Restriction</string>
+    <string name="step_gesture_title">3. Volume Down Hold (700ms)</string>
+    <string name="step_gesture_desc">Hold the Volume Down button for 700ms anywhere on your device. The volume indicator is suppressed, and the transparent cropping canvas appears.</string>
+    <string name="step_three_finger_title">4. Floating Edge Bar (Non-Blocking)</string>
+    <string name="step_three_finger_desc">A white translucent bar docked at the top-left screen edge. Tap to capture instantly or drag to reposition. 100% of touches outside the bar pass directly to underlying apps without blocking.</string>
+    <string name="btn_test_capture">Test Crop Overlay Now</string>
+    <string name="status_enabled">ACTIVE</string>
+    <string name="status_disabled">DISABLED</string>
+    <string name="status_unrestricted">UNRESTRICTED</string>
+    <string name="status_restricted">OPTIMIZED</string>
+    <string name="crop_instruction_hint">Drag across the screen to select a region to crop</string>
+    <string name="crop_btn_share">Share</string>
+    <string name="crop_btn_reset">Reset</string>
+    <string name="crop_btn_close">Close</string>
+    <string name="crop_hint_initial">Drag anywhere to draw crop box</string>
+    <string name="crop_hint_selected">Drag handles to resize • Inside to move • Outside to reselect</string>
+    <string name="share_cropped_title">Share Cropped Screenshot</string>
+    <string name="trigger_selection_title">Screenshot Trigger Mode</string>
+    <string name="trigger_selection_desc">Choose your trigger method. Volume Down long-press is recommended for zero on-screen elements, or use the white translucent edge bar.</string>
+    <string name="trigger_mode_vol_down">Volume Down Long-Press</string>
+    <string name="trigger_mode_vol_down_desc">Default. Suppresses volume dialog. Zero on-screen overlay; 100% untouched OS screen touches, typing, and gaming.</string>
+    <string name="trigger_mode_vol_down_badge">DEFAULT • RECOMMENDED</string>
+    <string name="trigger_mode_three_finger">White Translucent Edge Bar</string>
+    <string name="trigger_mode_three_finger_desc">White translucent bar docked at top-left edge (FLAG_NOT_TOUCH_MODAL). Tap or drag to capture. Zero touches blocked across the rest of the display.</string>
+    <string name="trigger_mode_both">Both Triggers Active</string>
+    <string name="trigger_mode_both_desc">Enable both Volume Down long-press and the top-left white translucent edge bar simultaneously.</string>
+    <string name="emergency_kill_switch_title">Emergency Kill-Switch (3× Volume Up)</string>
+    <string name="emergency_kill_switch_desc">Rapidly triple-press Volume Up anytime to immediately remove the touch overlay and unblock the screen.</string>
+    <string name="emergency_kill_switch_badge">SAFETY GUARD</string>
+    <string name="emergency_kill_switch_toast">Emergency Kill-Switch: Screen overlay force-removed</string>
+</resources>
+
