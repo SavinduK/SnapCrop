@@ -65,6 +65,13 @@ class KeyCaptureService : AccessibilityService() {
             TriggerPreferenceManager.setTriggerMode(context, mode)
             instance?.refreshTriggerConfiguration()
         }
+
+        /**
+         * Temporarily shows or hides the floating touch overlay (e.g. while CropOverlayActivity is active).
+         */
+        fun setOverlayVisible(visible: Boolean) {
+            instance?.setOverlayVisibility(visible)
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -271,25 +278,49 @@ class KeyCaptureService : AccessibilityService() {
     }
 
     /**
+     * Toggles visibility of the floating touch overlay (e.g. while CropOverlayActivity is active or taking screenshot).
+     */
+    fun setOverlayVisibility(visible: Boolean) {
+        mainHandler.post {
+            if (!visible) {
+                touchOverlayManager?.setOverlayVisibility(false)
+            } else {
+                if (TriggerPreferenceManager.isThreeFingerEnabled(this)) {
+                    touchOverlayManager?.setOverlayVisibility(true)
+                }
+            }
+        }
+    }
+
+    /**
      * Performs silent screenshot capture without MediaProjection prompts using Android 11+ API.
      */
     fun performScreenCapture() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             Log.d(TAG, "Initiating takeScreenshot on Display.DEFAULT_DISPLAY")
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshotResult: ScreenshotResult) {
-                        Log.d(TAG, "takeScreenshot succeeded")
-                        processScreenshot(screenshotResult)
-                    }
 
-                    override fun onFailure(errorCode: Int) {
-                        Log.e(TAG, "takeScreenshot failed with error code: $errorCode")
+            // Hide the floating dock/overlay immediately so it never appears in the screenshot
+            touchOverlayManager?.setOverlayVisibility(false)
+
+            // Post with slight delay to ensure WindowManager hides the view before capturing
+            mainHandler.postDelayed({
+                takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    mainExecutor,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshotResult: ScreenshotResult) {
+                            Log.d(TAG, "takeScreenshot succeeded")
+                            processScreenshot(screenshotResult)
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            Log.e(TAG, "takeScreenshot failed with error code: $errorCode")
+                            // Restore overlay visibility if screenshot fails
+                            setOverlayVisibility(true)
+                        }
                     }
-                }
-            )
+                )
+            }, 60L)
         } else {
             Log.e(TAG, "takeScreenshot API requires Android 11+ (API 30+)")
         }

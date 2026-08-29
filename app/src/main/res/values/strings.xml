@@ -25,6 +25,10 @@
     <string name="crop_btn_share">Share</string>
     <string name="crop_btn_reset">Reset</string>
     <string name="crop_btn_close">Close</string>
+    <string name="crop_btn_copy">Copy</string>
+    <string name="crop_btn_save">Save</string>
+    <string name="toast_copied_to_clipboard">Copied to clipboard</string>
+    <string name="toast_saved_to_gallery">Saved to Gallery</string>
     <string name="crop_hint_initial">Drag anywhere to draw crop box</string>
     <string name="crop_hint_selected">Drag handles to resize • Inside to move • Outside to reselect</string>
     <string name="share_cropped_title">Share Cropped Screenshot</string>

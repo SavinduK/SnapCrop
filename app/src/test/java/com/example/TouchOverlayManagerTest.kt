@@ -82,4 +82,13 @@ class TouchOverlayManagerTest {
         assertFalse("Overlay should be detached after forceRemoveOverlay", overlayManager.isAttached())
         org.junit.Assert.assertNull("overlayView should be null after forceRemoveOverlay", overlayManager.overlayView)
     }
+
+    @Test
+    fun `setOverlayVisibility changes visibility without throwing`() {
+        overlayManager.attachOverlay()
+        assertTrue("Overlay should be attached", overlayManager.isAttached())
+
+        overlayManager.setOverlayVisibility(false)
+        overlayManager.setOverlayVisibility(true)
+    }
 }

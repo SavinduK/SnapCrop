@@ -174,6 +174,17 @@ class TouchOverlayManager(private val context: Context) {
     }
 
     /**
+     * Toggles visibility of the overlay view (e.g. hides it during screenshot capture and when crop overlay is active).
+     */
+    fun setOverlayVisibility(visible: Boolean) {
+        val view = overlayView ?: return
+        view.post {
+            view.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+            Log.d(TAG, "Overlay visibility set to: $visible")
+        }
+    }
+
+    /**
      * Emergency safety kill-switch:
      * Directly invokes windowManager.removeView(overlayView) immediately to unblock the screen.
      */

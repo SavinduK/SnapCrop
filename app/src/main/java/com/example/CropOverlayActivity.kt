@@ -1,6 +1,10 @@
 package com.example
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -11,6 +15,8 @@ import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
@@ -23,33 +29,27 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.OpenWith
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,7 +60,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -79,7 +86,8 @@ import kotlin.math.roundToInt
  * CropOverlayActivity
  *
  * Fullscreen transparent activity hosting the interactive SelectionView
- * and a floating Jetpack Compose action toolbar with Reset and Share buttons.
+ * and a floating Jetpack Compose action toolbar with Reset, Copy to Clipboard,
+ * Share, and Save to Gallery buttons.
  */
 class CropOverlayActivity : ComponentActivity() {
 
@@ -92,6 +100,9 @@ class CropOverlayActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Hide floating edge bar / dock while the crop overlay is active
+        KeyCaptureService.setOverlayVisible(false)
 
         // Disable window transitions so the crop overlay screen appears instantly
         // without any transition animation or flicker revealing the app screen
@@ -127,6 +138,12 @@ class CropOverlayActivity : ComponentActivity() {
                     onShareRequested = { rect ->
                         handleCropAndShare(rect)
                     },
+                    onCopyRequested = { rect ->
+                        handleCropAndCopy(rect)
+                    },
+                    onSaveRequested = { rect ->
+                        handleCropAndSaveToGallery(rect)
+                    },
                     onCancelRequested = {
                         finish()
                     }
@@ -159,26 +176,27 @@ class CropOverlayActivity : ComponentActivity() {
             return
         }
 
-        // 2. Disk fallback
+        // 2. Disk cache fallback
         val tempFile = File(cacheDir, KeyCaptureService.TEMP_SCREENSHOT_FILE)
-        if (tempFile.exists()) {
+        if (tempFile.exists() && tempFile.length() > 0) {
             try {
                 loadedBitmap = BitmapFactory.decodeFile(tempFile.absolutePath)
+                if (loadedBitmap != null) {
+                    return
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode screenshot bitmap from disk", e)
+                Log.w(TAG, "Failed to decode screenshot from disk cache", e)
             }
         }
 
-        if (loadedBitmap == null) {
-            loadedBitmap = createFallbackScreenBitmap()
-        }
+        // 3. Fallback: generate a synthetic preview placeholder if launched directly
+        loadedBitmap = generateFallbackBitmap()
     }
 
     /**
-     * Generates a sample screen bitmap for interactive testing in environments
-     * without active accessibility permissions or physical volume keys.
+     * Generates a clean synthetic background bitmap for direct in-app testing.
      */
-    private fun createFallbackScreenBitmap(): Bitmap {
+    private fun generateFallbackBitmap(): Bitmap {
         val dm = resources.displayMetrics
         val width = if (dm.widthPixels > 0) dm.widthPixels else 1080
         val height = if (dm.heightPixels > 0) dm.heightPixels else 2400
@@ -186,104 +204,91 @@ class CropOverlayActivity : ComponentActivity() {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        // Slate background
+        // Slate gradient background
         val bgPaint = Paint().apply {
-            color = AndroidColor.parseColor("#0F172A")
-            style = Paint.Style.FILL
+            color = AndroidColor.rgb(15, 23, 42) // Slate 900
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
 
-        // Simulated top bar
-        val barPaint = Paint().apply {
-            color = AndroidColor.parseColor("#1E293B")
-            style = Paint.Style.FILL
+        // Subtle accent grid lines
+        val linePaint = Paint().apply {
+            color = AndroidColor.argb(30, 0, 229, 255)
+            strokeWidth = 2f
         }
-        canvas.drawRect(0f, 0f, width.toFloat(), 130f, barPaint)
+        val step = (60 * dm.density).toInt()
+        for (x in 0..width step step) {
+            canvas.drawLine(x.toFloat(), 0f, x.toFloat(), height.toFloat(), linePaint)
+        }
+        for (y in 0..height step step) {
+            canvas.drawLine(0f, y.toFloat(), width.toFloat(), y.toFloat(), linePaint)
+        }
 
-        val statusTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = AndroidColor.parseColor("#94A3B8")
-            textSize = 38f
-        }
-        canvas.drawText("09:41 • 5G • 100%", 60f, 85f, statusTextPaint)
-
-        // Card Preview
-        val cardPaint = Paint().apply {
-            color = AndroidColor.parseColor("#1E293B")
-            style = Paint.Style.FILL
-        }
-        val cyanPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = AndroidColor.parseColor("#00E5FF")
-            textSize = 52f
+        // Header text preview
+        val textPaint = Paint().apply {
+            color = AndroidColor.WHITE
+            textSize = 28f * dm.scaledDensity
+            isAntiAlias = true
             isFakeBoldText = true
         }
-        val subTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = AndroidColor.parseColor("#CBD5E1")
-            textSize = 34f
-        }
+        canvas.drawText("SnapCrop Live Screen Capture", 80f, 400f, textPaint)
 
-        val cardRect = RectF(60f, 240f, width - 60f, 720f)
-        canvas.drawRoundRect(cardRect, 32f, 32f, cardPaint)
-        canvas.drawText("SnapCrop Interactive Canvas", 110f, 340f, cyanPaint)
-        canvas.drawText("• Drag anywhere to create or reselect a bounding box", 110f, 430f, subTextPaint)
-        canvas.drawText("• Drag the circular corner or edge handles to resize", 110f, 510f, subTextPaint)
-        canvas.drawText("• Drag inside the box to move it freely", 110f, 590f, subTextPaint)
-        canvas.drawText("• Tap the Share button to launch the system share sheet", 110f, 670f, subTextPaint)
+        val subTextPaint = Paint().apply {
+            color = AndroidColor.rgb(148, 163, 184) // Slate 400
+            textSize = 16f * dm.scaledDensity
+            isAntiAlias = true
+        }
+        canvas.drawText("• Drag anywhere across the screen to create a crop box", 80f, 470f, subTextPaint)
+        canvas.drawText("• Move inside the box or drag edge handles to resize", 80f, 520f, subTextPaint)
+        canvas.drawText("• Copy to clipboard, save to gallery, or share instantly", 80f, 570f, subTextPaint)
 
         return bitmap
     }
 
     /**
-     * Crops the enclosed bitmap region, writes it to cacheDir/images/selection.png,
-     * and opens the native Android Share Sheet via FileProvider.
+     * Helper to extract cropped bitmap from current selection.
+     */
+    private fun extractCroppedBitmap(rect: RectF): Bitmap? {
+        val bitmap = loadedBitmap ?: return null
+        val view = selectionViewRef ?: return null
+
+        val viewW = view.width.toFloat()
+        val viewH = view.height.toFloat()
+        if (viewW <= 0f || viewH <= 0f) return null
+
+        val scaleX = bitmap.width.toFloat() / viewW
+        val scaleY = bitmap.height.toFloat() / viewH
+
+        val cropLeft = (rect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1)
+        val cropTop = (rect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
+        val cropRight = (rect.right * scaleX).toInt().coerceIn(cropLeft + 1, bitmap.width)
+        val cropBottom = (rect.bottom * scaleY).toInt().coerceIn(cropTop + 1, bitmap.height)
+
+        val cropWidth = (cropRight - cropLeft).coerceIn(1, bitmap.width - cropLeft)
+        val cropHeight = (cropBottom - cropTop).coerceIn(1, bitmap.height - cropTop)
+
+        return Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
+    }
+
+    /**
+     * Crops the selection and shares it via the native Android Share Sheet.
      */
     private fun handleCropAndShare(rect: RectF) {
-        val bitmap = loadedBitmap ?: run {
+        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
-        val view = selectionViewRef ?: run {
-            finish()
-            return
-        }
-
-        val viewW = view.width.toFloat()
-        val viewH = view.height.toFloat()
-        if (viewW <= 0f || viewH <= 0f) {
-            finish()
-            return
-        }
-
         try {
-            val scaleX = bitmap.width.toFloat() / viewW
-            val scaleY = bitmap.height.toFloat() / viewH
-
-            val cropLeft = (rect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1)
-            val cropTop = (rect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
-            val cropRight = (rect.right * scaleX).toInt().coerceIn(cropLeft + 1, bitmap.width)
-            val cropBottom = (rect.bottom * scaleY).toInt().coerceIn(cropTop + 1, bitmap.height)
-
-            val cropWidth = (cropRight - cropLeft).coerceIn(1, bitmap.width - cropLeft)
-            val cropHeight = (cropBottom - cropTop).coerceIn(1, bitmap.height - cropTop)
-
-            // Crop the screenshot bitmap
-            val croppedBitmap = Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
-
-            // Save to cacheDir/images/selection.png
-            val imagesDir = File(cacheDir, "images")
-            if (!imagesDir.exists()) {
-                imagesDir.mkdirs()
-            }
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
             val croppedFile = File(imagesDir, "selection.png")
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
             croppedBitmap.recycle()
 
-            Log.d(TAG, "Cropped image successfully saved to ${croppedFile.absolutePath}")
+            Log.d(TAG, "Cropped image saved to ${croppedFile.absolutePath}")
 
-            // Open native Android Share Sheet via FileProvider
             val contentUri = FileProvider.getUriForFile(
                 this,
                 "${applicationContext.packageName}.fileprovider",
@@ -308,6 +313,101 @@ class CropOverlayActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Crops the selection and copies it to the device clipboard.
+     */
+    private fun handleCropAndCopy(rect: RectF) {
+        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+            Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        try {
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
+            val croppedFile = File(imagesDir, "clipboard_crop.png")
+            FileOutputStream(croppedFile).use { outStream ->
+                croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+            }
+            croppedBitmap.recycle()
+
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                croppedFile
+            )
+
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newUri(contentResolver, "Cropped Screenshot", contentUri)
+            clipboard.setPrimaryClip(clip)
+
+            Toast.makeText(this, getString(R.string.toast_copied_to_clipboard), Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "Cropped image copied to clipboard: $contentUri")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy image to clipboard", e)
+            Toast.makeText(this, "Error copying to clipboard", Toast.LENGTH_SHORT).show()
+        } finally {
+            finish()
+        }
+    }
+
+    /**
+     * Crops the selection and saves it to the system Gallery (Pictures/SnapCrop).
+     */
+    private fun handleCropAndSaveToGallery(rect: RectF) {
+        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+            Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        try {
+            val timestamp = System.currentTimeMillis()
+            val filename = "SnapCrop_$timestamp.png"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.DATE_ADDED, timestamp / 1000)
+                put(MediaStore.Images.Media.DATE_TAKEN, timestamp)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/SnapCrop")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+
+            val itemUri = contentResolver.insert(collectionUri, values)
+            if (itemUri != null) {
+                contentResolver.openOutputStream(itemUri)?.use { outStream ->
+                    croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear()
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    contentResolver.update(itemUri, values, null, null)
+                }
+
+                Toast.makeText(this, getString(R.string.toast_saved_to_gallery), Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "Cropped image saved to Gallery: $itemUri")
+            } else {
+                Toast.makeText(this, "Failed to save image to gallery", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save image to gallery", e)
+            Toast.makeText(this, "Error saving to gallery", Toast.LENGTH_SHORT).show()
+        } finally {
+            croppedBitmap.recycle()
+            finish()
+        }
+    }
+
     override fun onDestroy() {
         ScreenshotHolder.clear()
         loadedBitmap?.let {
@@ -317,6 +417,10 @@ class CropOverlayActivity : ComponentActivity() {
         }
         loadedBitmap = null
         selectionViewRef = null
+
+        // Restore floating edge bar / dock visibility when leaving the crop overlay
+        KeyCaptureService.setOverlayVisible(true)
+
         super.onDestroy()
     }
 }
@@ -325,13 +429,15 @@ class CropOverlayActivity : ComponentActivity() {
  * CropOverlayContent
  *
  * Full-screen Compose layer that coordinates the SelectionView and anchors the
- * floating Material3 toolbar (Reset & Share) with positioning logic.
+ * floating Material3 dock with Reset, Copy to Clipboard, Share, and Save to Gallery buttons.
  */
 @Composable
 private fun CropOverlayContent(
     screenshot: Bitmap?,
     onViewAttached: (SelectionView) -> Unit,
     onShareRequested: (RectF) -> Unit,
+    onCopyRequested: (RectF) -> Unit,
+    onSaveRequested: (RectF) -> Unit,
     onCancelRequested: () -> Unit
 ) {
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
@@ -421,15 +527,15 @@ private fun CropOverlayContent(
             }
         }
 
-        // 3. Floating Action Toolbar (Reset & Share)
+        // 3. Floating Action Dock (Reset, Copy, Share, Save)
         // Positioned contextually below (or above) the bounding box
         val currentRect = selectionRect
         val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
 
         if (hasValidSelection && currentRect != null) {
             val marginPx = with(density) { 14.dp.toPx() }
-            val toolbarHeightPx = with(density) { 54.dp.toPx() }
-            val toolbarWidthPx = with(density) { 210.dp.toPx() }
+            val toolbarHeightPx = with(density) { 60.dp.toPx() }
+            val toolbarWidthPx = with(density) { 240.dp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
@@ -456,75 +562,273 @@ private fun CropOverlayContent(
                     .offset { IntOffset(targetX.roundToInt(), targetY.roundToInt()) }
             ) {
                 Surface(
-                    shape = RoundedCornerShape(22.dp),
-                    color = Color(0xF20F172A), // Slate 900 at 95% opacity
+                    shape = RoundedCornerShape(percent = 50),
+                    color = Color(0xF21E232B), // Dark capsule dock matching user reference
                     tonalElevation = 6.dp,
-                    shadowElevation = 10.dp,
-                    border = BorderStroke(1.2.dp, Color(0x8000E5FF)),
+                    shadowElevation = 12.dp,
+                    border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
                     modifier = Modifier.testTag("floating_action_toolbar")
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Reset / Retake Button
-                        OutlinedButton(
+                        // 1. Reset / Retake Button
+                        CropActionCircleButton(
                             onClick = {
                                 activeSelectionView?.resetSelection()
                             },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = Color(0xFFCBD5E1)
-                            ),
-                            border = BorderStroke(1.dp, Color(0x4094A3B8)),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                            modifier = Modifier.testTag("btn_reset_crop")
+                            contentDescription = stringResource(R.string.crop_btn_reset),
+                            testTag = "btn_reset_crop"
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = stringResource(R.string.crop_btn_reset),
-                                modifier = Modifier.size(17.dp),
-                                tint = Color(0xFF94A3B8)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = stringResource(R.string.crop_btn_reset),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                            ResetCropIcon(tint = Color.White)
                         }
 
-                        // Share Button
-                        Button(
+                        // 2. Copy to Clipboard Button
+                        CropActionCircleButton(
+                            onClick = {
+                                onCopyRequested(currentRect)
+                            },
+                            contentDescription = stringResource(R.string.crop_btn_copy),
+                            testTag = "btn_copy_crop"
+                        ) {
+                            CopyIcon(tint = Color.White)
+                        }
+
+                        // 3. Share Button
+                        CropActionCircleButton(
                             onClick = {
                                 onShareRequested(currentRect)
                             },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF00E5FF),
-                                contentColor = Color(0xFF0A0F1D)
-                            ),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 7.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                            modifier = Modifier.testTag("btn_share_crop")
+                            contentDescription = stringResource(R.string.crop_btn_share),
+                            testTag = "btn_share_crop"
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = stringResource(R.string.crop_btn_share),
-                                modifier = Modifier.size(17.dp),
-                                tint = Color(0xFF0A0F1D)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = stringResource(R.string.crop_btn_share),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            ShareNodesIcon(tint = Color.White)
+                        }
+
+                        // 4. Save to Gallery Button
+                        CropActionCircleButton(
+                            onClick = {
+                                onSaveRequested(currentRect)
+                            },
+                            contentDescription = stringResource(R.string.crop_btn_save),
+                            testTag = "btn_save_crop"
+                        ) {
+                            SaveToGalleryIcon(tint = Color.White)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Circular icon button container for the floating dock action items.
+ */
+@Composable
+private fun CropActionCircleButton(
+    onClick: () -> Unit,
+    contentDescription: String,
+    testTag: String,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(Color(0x28FFFFFF))
+            .clickable(onClick = onClick)
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
+/**
+ * Custom vector canvas for Copy to Clipboard icon matching user reference:
+ * Two overlapping rounded rectangular cards.
+ */
+@Composable
+private fun CopyIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 2f * density
+        val cr = 3.5f * density
+        val boxW = size.width * 0.56f
+        val boxH = size.height * 0.62f
+
+        // Front rectangle (shifted bottom-left)
+        val frontLeft = size.width * 0.12f
+        val frontTop = size.height * 0.26f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(frontLeft, frontTop),
+            size = Size(boxW, boxH),
+            cornerRadius = CornerRadius(cr, cr),
+            style = Stroke(width = strokeW)
+        )
+
+        // Back rectangle (shifted top-right)
+        val backLeft = frontLeft + size.width * 0.20f
+        val backTop = size.height * 0.12f
+        val backRight = backLeft + boxW
+        val backBottom = backTop + boxH
+
+        val backPath = Path().apply {
+            moveTo(frontLeft + boxW * 0.40f, backTop)
+            lineTo(backRight - cr, backTop)
+            quadraticBezierTo(backRight, backTop, backRight, backTop + cr)
+            lineTo(backRight, frontTop + boxH * 0.55f)
+        }
+        drawPath(
+            path = backPath,
+            color = tint,
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+/**
+ * Custom vector canvas for Share icon matching user reference:
+ * Three filled circular nodes connected with stroke lines.
+ */
+@Composable
+private fun ShareNodesIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 2.2f * density
+        val dotRadius = 3f * density
+
+        val leftDot = Offset(size.width * 0.22f, size.height * 0.50f)
+        val topRightDot = Offset(size.width * 0.78f, size.height * 0.22f)
+        val bottomRightDot = Offset(size.width * 0.78f, size.height * 0.78f)
+
+        // Connecting lines
+        drawLine(
+            color = tint,
+            start = leftDot,
+            end = topRightDot,
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = leftDot,
+            end = bottomRightDot,
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+
+        // Filled node circles
+        drawCircle(color = tint, radius = dotRadius, center = leftDot)
+        drawCircle(color = tint, radius = dotRadius, center = topRightDot)
+        drawCircle(color = tint, radius = dotRadius, center = bottomRightDot)
+    }
+}
+
+/**
+ * Custom vector canvas for Save to Gallery icon matching user reference:
+ * Outer rounded square border with centered downward arrow.
+ */
+@Composable
+private fun SaveToGalleryIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 2f * density
+        val cr = 4.5f * density
+        val pad = size.width * 0.08f
+        val boxSize = size.width - 2 * pad
+
+        // Outer rounded square frame
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(pad, pad),
+            size = Size(boxSize, boxSize),
+            cornerRadius = CornerRadius(cr, cr),
+            style = Stroke(width = strokeW)
+        )
+
+        // Inner downward arrow
+        val cx = size.width / 2f
+        val arrowTop = size.height * 0.26f
+        val arrowBottom = size.height * 0.72f
+        val headW = size.width * 0.20f
+        val headH = size.height * 0.16f
+
+        // Stem
+        drawLine(
+            color = tint,
+            start = Offset(cx, arrowTop),
+            end = Offset(cx, arrowBottom),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+
+        // Arrow head (V)
+        val arrowHead = Path().apply {
+            moveTo(cx - headW, arrowBottom - headH)
+            lineTo(cx, arrowBottom)
+            lineTo(cx + headW, arrowBottom - headH)
+        }
+        drawPath(
+            path = arrowHead,
+            color = tint,
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+/**
+ * Custom vector canvas for Reset crop icon matching the circular dock design:
+ * Circular counter-clockwise arc with directional arrow tip.
+ */
+@Composable
+private fun ResetCropIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 2f * density
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val radius = size.width * 0.32f
+
+        // Circular arc (275 degrees)
+        drawArc(
+            color = tint,
+            startAngle = 45f,
+            sweepAngle = 275f,
+            useCenter = false,
+            topLeft = Offset(cx - radius, cy - radius),
+            size = Size(radius * 2, radius * 2),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+
+        // Arrow tip
+        val angleRad = Math.toRadians(45.0 + 275.0)
+        val tipX = (cx + radius * Math.cos(angleRad)).toFloat()
+        val tipY = (cy + radius * Math.sin(angleRad)).toFloat()
+        val arrowW = 3.5f * density
+
+        val arrowHead = Path().apply {
+            moveTo(tipX - arrowW, tipY - arrowW * 1.5f)
+            lineTo(tipX, tipY)
+            lineTo(tipX + arrowW * 1.5f, tipY - arrowW * 0.5f)
+        }
+        drawPath(
+            path = arrowHead,
+            color = tint,
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
     }
 }
