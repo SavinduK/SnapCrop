@@ -6,18 +6,15 @@ import android.content.SharedPreferences
 /**
  * TriggerPreferenceManager
  *
- * Persists the user's preferred screenshot trigger mode.
- * Default is VOLUME_DOWN_ONLY, guaranteeing 100% untouched OS screen interaction
- * by keeping the touch overlay completely unattached or with FLAG_NOT_TOUCHABLE.
+ * Persists the user's screenshot trigger configuration.
+ * Default is SLIDER (Horizontal Edge Slider docked at screen edge).
  */
 object TriggerPreferenceManager {
     private const val PREFS_NAME = "snapcrop_trigger_prefs"
     private const val KEY_TRIGGER_MODE = "trigger_mode"
 
     enum class TriggerMode {
-        VOLUME_DOWN_ONLY,   // Default: Volume Down long-press only (100% untouched OS screen touches)
-        THREE_FINGER_SWIPE,  // 3-Finger downward swipe overlay
-        BOTH                // Both triggers enabled simultaneously
+        SLIDER   // Default: Horizontal edge slider bar docked on screen
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -25,11 +22,11 @@ object TriggerPreferenceManager {
     }
 
     fun getTriggerMode(context: Context): TriggerMode {
-        val modeStr = getPrefs(context).getString(KEY_TRIGGER_MODE, TriggerMode.VOLUME_DOWN_ONLY.name)
+        val modeStr = getPrefs(context).getString(KEY_TRIGGER_MODE, TriggerMode.SLIDER.name)
         return try {
-            TriggerMode.valueOf(modeStr ?: TriggerMode.VOLUME_DOWN_ONLY.name)
+            TriggerMode.valueOf(modeStr ?: TriggerMode.SLIDER.name)
         } catch (e: Exception) {
-            TriggerMode.VOLUME_DOWN_ONLY
+            TriggerMode.SLIDER
         }
     }
 
@@ -38,12 +35,11 @@ object TriggerPreferenceManager {
     }
 
     fun isVolumeDownEnabled(context: Context): Boolean {
-        val mode = getTriggerMode(context)
-        return mode == TriggerMode.VOLUME_DOWN_ONLY || mode == TriggerMode.BOTH
+        return false // Volume down long-press removed per user instruction
     }
 
     fun isThreeFingerEnabled(context: Context): Boolean {
-        val mode = getTriggerMode(context)
-        return mode == TriggerMode.THREE_FINGER_SWIPE || mode == TriggerMode.BOTH
+        return true // Horizontal edge slider is default and active
     }
 }
+

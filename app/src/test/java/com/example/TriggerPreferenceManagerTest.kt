@@ -28,30 +28,20 @@ class TriggerPreferenceManagerTest {
     }
 
     @Test
-    fun `default trigger mode is VOLUME_DOWN_ONLY`() {
+    fun `default trigger mode is SLIDER with three finger slider enabled`() {
         val mode = TriggerPreferenceManager.getTriggerMode(context)
-        assertEquals(TriggerPreferenceManager.TriggerMode.VOLUME_DOWN_ONLY, mode)
-        assertTrue(TriggerPreferenceManager.isVolumeDownEnabled(context))
-        assertFalse(TriggerPreferenceManager.isThreeFingerEnabled(context))
-    }
-
-    @Test
-    fun `setting THREE_FINGER_SWIPE updates preferences correctly`() {
-        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.THREE_FINGER_SWIPE)
-
-        val mode = TriggerPreferenceManager.getTriggerMode(context)
-        assertEquals(TriggerPreferenceManager.TriggerMode.THREE_FINGER_SWIPE, mode)
+        assertEquals(TriggerPreferenceManager.TriggerMode.SLIDER, mode)
         assertFalse(TriggerPreferenceManager.isVolumeDownEnabled(context))
         assertTrue(TriggerPreferenceManager.isThreeFingerEnabled(context))
     }
 
     @Test
-    fun `setting BOTH enables both triggers`() {
-        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.BOTH)
+    fun `setting SLIDER updates preferences correctly`() {
+        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.SLIDER)
 
         val mode = TriggerPreferenceManager.getTriggerMode(context)
-        assertEquals(TriggerPreferenceManager.TriggerMode.BOTH, mode)
-        assertTrue(TriggerPreferenceManager.isVolumeDownEnabled(context))
+        assertEquals(TriggerPreferenceManager.TriggerMode.SLIDER, mode)
         assertTrue(TriggerPreferenceManager.isThreeFingerEnabled(context))
     }
 }
+

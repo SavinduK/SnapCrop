@@ -70,7 +70,6 @@ open class SelectionView @JvmOverloads constructor(
     private val srcRect = Rect()
     private val dstRect = Rect()
     private val edgePillRect = RectF()
-    private val dimenBadgeRect = RectF()
 
     // Configuration dimensions (scaled to display density)
     private val minBoxSize by lazy { dpToPx(36f) }
@@ -95,22 +94,6 @@ open class SelectionView @JvmOverloads constructor(
         strokeWidth = dpToPx(1f)
     }
 
-    // Corner handle paints (circular)
-    private val cornerOuterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF") // Outer cyan ring
-        style = Paint.Style.FILL
-    }
-
-    private val cornerInnerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE // Inner white contrast dot
-        style = Paint.Style.FILL
-    }
-
-    private val cornerCenterPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#0A0F1D") // Dark center pupil
-        style = Paint.Style.FILL
-    }
-
     // Edge handle paints (pill)
     private val edgeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#00E5FF")
@@ -121,25 +104,6 @@ open class SelectionView @JvmOverloads constructor(
         color = Color.WHITE
         style = Paint.Style.STROKE
         strokeWidth = dpToPx(1f)
-    }
-
-    // Dimension badge paints
-    private val dimensionBadgeBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(230, 15, 23, 42)
-        style = Paint.Style.FILL
-    }
-
-    private val dimensionBadgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
-        style = Paint.Style.STROKE
-        strokeWidth = dpToPx(1.2f)
-    }
-
-    private val dimensionTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = dpToPx(12f)
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
     }
 
     private fun dpToPx(dp: Float): Float = dp * resources.displayMetrics.density
@@ -210,23 +174,7 @@ open class SelectionView @JvmOverloads constructor(
             // 4. High-contrast cyan border
             canvas.drawRect(selectionRect, cyanBorderPaint)
 
-            // 5. Circular corner handles
-            val cornerOuterR = dpToPx(10f)
-            val cornerInnerR = dpToPx(6f)
-            val cornerCenterR = dpToPx(2.5f)
-            val corners = listOf(
-                selectionRect.left to selectionRect.top,
-                selectionRect.right to selectionRect.top,
-                selectionRect.left to selectionRect.bottom,
-                selectionRect.right to selectionRect.bottom
-            )
-            for ((cx, cy) in corners) {
-                canvas.drawCircle(cx, cy, cornerOuterR, cornerOuterPaint)
-                canvas.drawCircle(cx, cy, cornerInnerR, cornerInnerPaint)
-                canvas.drawCircle(cx, cy, cornerCenterR, cornerCenterPaint)
-            }
-
-            // 6. Interactive edge handles (pill shaped)
+            // 5. Interactive edge handles (pill shaped)
             val pillLen = dpToPx(30f)
             val pillThick = dpToPx(5.5f)
             val pillRadius = pillThick / 2f
@@ -270,28 +218,6 @@ open class SelectionView @JvmOverloads constructor(
             )
             canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
             canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
-
-            // 7. Dimension tag badge
-            val bmp = screenshotBitmap
-            val scaleX = if (bmp != null) bmp.width.toFloat() / viewW else 1f
-            val scaleY = if (bmp != null) bmp.height.toFloat() / viewH else 1f
-            val pxW = (selectionRect.width() * scaleX).toInt()
-            val pxH = (selectionRect.height() * scaleY).toInt()
-            val dimenText = "$pxW × $pxH px"
-
-            val badgeW = dpToPx(104f)
-            val badgeH = dpToPx(24f)
-            val badgeLeft = (selectionRect.centerX() - badgeW / 2f).coerceIn(dpToPx(12f), viewW - badgeW - dpToPx(12f))
-            val badgeTop = if (selectionRect.top > badgeH + dpToPx(18f)) {
-                selectionRect.top - badgeH - dpToPx(8f)
-            } else {
-                selectionRect.bottom + dpToPx(8f)
-            }.coerceIn(dpToPx(12f), viewH - badgeH - dpToPx(12f))
-
-            dimenBadgeRect.set(badgeLeft, badgeTop, badgeLeft + badgeW, badgeTop + badgeH)
-            canvas.drawRoundRect(dimenBadgeRect, dpToPx(12f), dpToPx(12f), dimensionBadgeBgPaint)
-            canvas.drawRoundRect(dimenBadgeRect, dpToPx(12f), dpToPx(12f), dimensionBadgeBorderPaint)
-            canvas.drawText(dimenText, dimenBadgeRect.centerX(), dimenBadgeRect.centerY() + dpToPx(4f), dimensionTextPaint)
         } else {
             // When no selection exists, render full-screen translucent dark mask
             canvas.drawRect(0f, 0f, viewW, viewH, maskPaint)

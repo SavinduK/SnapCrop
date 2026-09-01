@@ -1,6 +1,6 @@
 {
   "name": "SnapCrop",
-  "description": "Silent screenshot capture via Volume Down long-press or 3-finger swipe down overlay with transparent cropping canvas and native sharing.",
+  "description": "Instant screenshot capture via screen edge slider bar or 3-tap Volume Up, with transparent cropping canvas, on-device OCR text recognition & Google search, Gemini AI integration, and native sharing.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

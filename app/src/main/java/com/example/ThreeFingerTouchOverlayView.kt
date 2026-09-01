@@ -314,6 +314,26 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
         return dispatchTouchEvent(event)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        post {
+            if (isFloatingPillMode) {
+                val wm = windowManager ?: return@post
+                val lp = layoutParams as? WindowManager.LayoutParams ?: return@post
+                val displayMetrics = resources.displayMetrics
+                val minY = (24 * displayMetrics.density).toInt()
+                val maxY = (displayMetrics.heightPixels - height - (24 * displayMetrics.density)).toInt().coerceAtLeast(minY)
+                lp.y = lp.y.coerceIn(minY, maxY)
+                lp.x = 0
+                try {
+                    wm.updateViewLayout(this, lp)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to reposition on configuration change", e)
+                }
+            }
+        }
+    }
+
     private fun calculateAverageY(event: MotionEvent): Float {
         var sum = 0f
         val count = event.pointerCount.coerceAtMost(3)

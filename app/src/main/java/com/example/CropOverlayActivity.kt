@@ -1,6 +1,7 @@
 package com.example
 
 import android.app.Activity
+import android.app.SearchManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
@@ -13,6 +14,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.BitmapDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -28,28 +30,51 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,11 +88,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -77,6 +104,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.max
@@ -135,6 +165,12 @@ class CropOverlayActivity : ComponentActivity() {
                     onViewAttached = { view ->
                         selectionViewRef = view
                     },
+                    onGeminiRequested = { rect ->
+                        handleCropAndShareToGemini(rect)
+                    },
+                    onOcrRequested = { rect, onTextExtracted, onError, onEmpty ->
+                        performTextRecognition(rect, onTextExtracted, onEmpty, onError)
+                    },
                     onShareRequested = { rect ->
                         handleCropAndShare(rect)
                     },
@@ -146,6 +182,15 @@ class CropOverlayActivity : ComponentActivity() {
                     },
                     onCancelRequested = {
                         finish()
+                    },
+                    onSearchGoogle = { text ->
+                        handleSearchGoogle(text)
+                    },
+                    onCopyText = { text ->
+                        handleCopyText(text)
+                    },
+                    onShareText = { text ->
+                        handleShareText(text)
                     }
                 )
             }
@@ -153,6 +198,7 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     override fun finish() {
+        KeyCaptureService.setOverlayVisible(true)
         super.finish()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
@@ -160,6 +206,16 @@ class CropOverlayActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             overridePendingTransition(0, 0)
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        KeyCaptureService.setOverlayVisible(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        KeyCaptureService.setOverlayVisible(true)
     }
 
     /**
@@ -270,7 +326,149 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     /**
-     * Crops the selection and shares it via the native Android Share Sheet.
+     * Crops the selection and sends it directly to the Gemini app if installed,
+     * or opens the Google Play Store page for Gemini if not installed.
+     */
+    private fun handleCropAndShareToGemini(rect: RectF) {
+        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+            Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        try {
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
+            val croppedFile = File(imagesDir, "gemini_crop_${System.currentTimeMillis()}.png")
+            FileOutputStream(croppedFile).use { outStream ->
+                croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+            }
+            croppedBitmap.recycle()
+
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                croppedFile
+            )
+
+            val geminiPackage = "com.google.android.apps.bard"
+            val googleSearchPackage = "com.google.android.googlequicksearchbox"
+
+            // Explicitly grant URI read permissions to target packages
+            try {
+                grantUriPermission(geminiPackage, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not pre-grant URI permission to $geminiPackage", e)
+            }
+            try {
+                grantUriPermission(googleSearchPackage, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not pre-grant URI permission to $googleSearchPackage", e)
+            }
+
+            var launched = false
+
+            // Strategy 1: Direct ACTION_SEND targeting Gemini standalone app
+            val geminiSendIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                setDataAndType(contentUri, "image/png")
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
+                setPackage(geminiPackage)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            if (geminiSendIntent.resolveActivity(packageManager) != null ||
+                packageManager.queryIntentActivities(geminiSendIntent, 0).isNotEmpty()
+            ) {
+                try {
+                    startActivity(geminiSendIntent)
+                    Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                    launched = true
+                } catch (e: Exception) {
+                    Log.d(TAG, "Error starting geminiSendIntent", e)
+                }
+            }
+
+            // Strategy 2: Launch Intent for Gemini App
+            if (!launched) {
+                val geminiLaunchIntent = packageManager.getLaunchIntentForPackage(geminiPackage)?.apply {
+                    action = Intent.ACTION_SEND
+                    type = "image/png"
+                    setDataAndType(contentUri, "image/png")
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (geminiLaunchIntent != null) {
+                    try {
+                        startActivity(geminiLaunchIntent)
+                        Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                        launched = true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Error starting geminiLaunchIntent", e)
+                    }
+                }
+            }
+
+            // Strategy 3: Try starting without resolve check in case queries was filtered
+            if (!launched) {
+                try {
+                    startActivity(geminiSendIntent)
+                    Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                    launched = true
+                } catch (e: Exception) {
+                    Log.d(TAG, "Direct launch without check failed: ${e.message}")
+                }
+            }
+
+            // Strategy 4: If standalone Gemini package is not available, check Google Search App Gemini
+            if (!launched) {
+                val googleSendIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    setDataAndType(contentUri, "image/png")
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
+                    setPackage(googleSearchPackage)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (googleSendIntent.resolveActivity(packageManager) != null ||
+                    packageManager.queryIntentActivities(googleSendIntent, 0).isNotEmpty()
+                ) {
+                    try {
+                        startActivity(googleSendIntent)
+                        Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                        launched = true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Google app send start failed: ${e.message}")
+                    }
+                }
+            }
+
+            // Strategy 5: If not installed, notify user and open Gemini web or Play Store
+            if (!launched) {
+                Toast.makeText(this, getString(R.string.toast_gemini_not_installed), Toast.LENGTH_LONG).show()
+                try {
+                    val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$geminiPackage")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(playStoreIntent)
+                } catch (e: Exception) {
+                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://gemini.google.com/")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(webIntent)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to share image with Gemini app", e)
+            Toast.makeText(this, "Error opening Gemini app", Toast.LENGTH_SHORT).show()
+        } finally {
+            finish()
+        }
+    }
+
+    /**
+     * Crops the selection and shares it via the native Android Share Sheet with rich image thumbnail preview.
      */
     private fun handleCropAndShare(rect: RectF) {
         val croppedBitmap = extractCroppedBitmap(rect) ?: run {
@@ -281,7 +479,7 @@ class CropOverlayActivity : ComponentActivity() {
 
         try {
             val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
-            val croppedFile = File(imagesDir, "selection.png")
+            val croppedFile = File(imagesDir, "share_crop_${System.currentTimeMillis()}.png")
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
@@ -295,14 +493,19 @@ class CropOverlayActivity : ComponentActivity() {
                 croppedFile
             )
 
+            // Setup share intent with ClipData and URI permissions to display rich preview on Android 10+
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
+                setDataAndType(contentUri, "image/png")
                 putExtra(Intent.EXTRA_STREAM, contentUri)
+                clipData = ClipData.newUri(contentResolver, getString(R.string.share_cropped_title), contentUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
             val chooser = Intent.createChooser(shareIntent, getString(R.string.share_cropped_title)).apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(Intent.EXTRA_TITLE, getString(R.string.share_cropped_title))
             }
             startActivity(chooser)
         } catch (e: Exception) {
@@ -408,6 +611,99 @@ class CropOverlayActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Performs on-device text recognition (OCR) on the cropped region using Google ML Kit.
+     */
+    private fun performTextRecognition(
+        rect: RectF,
+        onSuccess: (String, List<String>) -> Unit,
+        onEmpty: () -> Unit,
+        onError: (Exception) -> Unit
+    ) {
+        val croppedBitmap = extractCroppedBitmap(rect)
+        if (croppedBitmap == null) {
+            onError(IllegalStateException("Cropped bitmap unavailable"))
+            return
+        }
+
+        try {
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
+            recognizer.process(inputImage)
+                .addOnSuccessListener { visionText ->
+                    val text = visionText.text.trim()
+                    val blocks = visionText.textBlocks.mapNotNull { block ->
+                        block.text.trim().takeIf { it.isNotEmpty() }
+                    }
+                    croppedBitmap.recycle()
+                    if (text.isEmpty()) {
+                        onEmpty()
+                    } else {
+                        onSuccess(text, blocks)
+                    }
+                }
+                .addOnFailureListener { ex ->
+                    croppedBitmap.recycle()
+                    Log.e(TAG, "OCR Recognition failed", ex)
+                    onError(ex)
+                }
+        } catch (e: Exception) {
+            croppedBitmap.recycle()
+            Log.e(TAG, "Error initializing OCR recognizer", e)
+            onError(e)
+        }
+    }
+
+    /**
+     * Sends the extracted text directly to Google Web Search.
+     */
+    private fun handleSearchGoogle(query: String) {
+        if (query.isBlank()) return
+        try {
+            val searchIntent = Intent(Intent.ACTION_WEB_SEARCH).apply {
+                putExtra(SearchManager.QUERY, query)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(searchIntent)
+        } catch (e: Exception) {
+            val webUri = Uri.parse("https://www.google.com/search?q=" + Uri.encode(query))
+            val webIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(webIntent)
+        } finally {
+            finish()
+        }
+    }
+
+    /**
+     * Copies recognized text to the system clipboard.
+     */
+    private fun handleCopyText(text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("SnapCrop OCR", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, getString(R.string.toast_text_copied), Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * Shares recognized text via the Android Share sheet.
+     */
+    private fun handleShareText(text: String) {
+        try {
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                putExtra(Intent.EXTRA_TEXT, text)
+                type = "text/plain"
+            }
+            val chooser = Intent.createChooser(sendIntent, getString(R.string.ocr_btn_share_text)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to share text", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onDestroy() {
         ScreenshotHolder.clear()
         loadedBitmap?.let {
@@ -429,20 +725,36 @@ class CropOverlayActivity : ComponentActivity() {
  * CropOverlayContent
  *
  * Full-screen Compose layer that coordinates the SelectionView and anchors the
- * floating Material3 dock with Reset, Copy to Clipboard, Share, and Save to Gallery buttons.
+ * floating Material3 dock with Reset, Select Text (OCR), Ask Gemini, Copy to Clipboard, Share, and Save to Gallery buttons.
  */
 @Composable
 private fun CropOverlayContent(
     screenshot: Bitmap?,
     onViewAttached: (SelectionView) -> Unit,
+    onGeminiRequested: (RectF) -> Unit,
+    onOcrRequested: (
+        rect: RectF,
+        onSuccess: (String, List<String>) -> Unit,
+        onError: (Exception) -> Unit,
+        onEmpty: () -> Unit
+    ) -> Unit,
     onShareRequested: (RectF) -> Unit,
     onCopyRequested: (RectF) -> Unit,
     onSaveRequested: (RectF) -> Unit,
-    onCancelRequested: () -> Unit
+    onCancelRequested: () -> Unit,
+    onSearchGoogle: (String) -> Unit,
+    onCopyText: (String) -> Unit,
+    onShareText: (String) -> Unit
 ) {
+    val context = LocalContext.current
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
     var isInteracting by remember { mutableStateOf(false) }
     var activeSelectionView by remember { mutableStateOf<SelectionView?>(null) }
+
+    // OCR State
+    var isOcrProcessing by remember { mutableStateOf(false) }
+    var ocrResultText by remember { mutableStateOf<String?>(null) }
+    var ocrBlocks by remember { mutableStateOf<List<String>>(emptyList()) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
@@ -527,15 +839,15 @@ private fun CropOverlayContent(
             }
         }
 
-        // 3. Floating Action Dock (Reset, Copy, Share, Save)
+        // 3. Floating Action Dock (Reset, Select Text, Gemini, Copy, Share, Save)
         // Positioned contextually below (or above) the bounding box
         val currentRect = selectionRect
         val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
 
-        if (hasValidSelection && currentRect != null) {
+        if (hasValidSelection && currentRect != null && ocrResultText == null) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val toolbarWidthPx = with(density) { 240.dp.toPx() }
+            val toolbarWidthPx = with(density) { 340.dp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
@@ -561,66 +873,554 @@ private fun CropOverlayContent(
                 modifier = Modifier
                     .offset { IntOffset(targetX.roundToInt(), targetY.roundToInt()) }
             ) {
-                Surface(
-                    shape = RoundedCornerShape(percent = 50),
-                    color = Color(0xF21E232B), // Dark capsule dock matching user reference
-                    tonalElevation = 6.dp,
-                    shadowElevation = 12.dp,
-                    border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
-                    modifier = Modifier.testTag("floating_action_toolbar")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    // OCR In-progress loading indicator
+                    if (isOcrProcessing) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xF20F172A),
+                            border = BorderStroke(1.dp, Color(0x6600E5FF))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF00E5FF)
+                                )
+                                Text(
+                                    text = stringResource(R.string.ocr_extracting),
+                                    color = Color(0xFF00E5FF),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // Main Action Capsule Dock
+                    Surface(
+                        shape = RoundedCornerShape(percent = 50),
+                        color = Color(0xF21E232B), // Dark capsule dock matching user reference
+                        tonalElevation = 6.dp,
+                        shadowElevation = 12.dp,
+                        border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
+                        modifier = Modifier.testTag("floating_action_toolbar")
                     ) {
-                        // 1. Reset / Retake Button
-                        CropActionCircleButton(
-                            onClick = {
-                                activeSelectionView?.resetSelection()
-                            },
-                            contentDescription = stringResource(R.string.crop_btn_reset),
-                            testTag = "btn_reset_crop"
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            ResetCropIcon(tint = Color.White)
-                        }
+                            // 1. Reset / Retake Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    activeSelectionView?.resetSelection()
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_reset),
+                                testTag = "btn_reset_crop"
+                            ) {
+                                ResetCropIcon(tint = Color.White)
+                            }
 
-                        // 2. Copy to Clipboard Button
-                        CropActionCircleButton(
-                            onClick = {
-                                onCopyRequested(currentRect)
-                            },
-                            contentDescription = stringResource(R.string.crop_btn_copy),
-                            testTag = "btn_copy_crop"
-                        ) {
-                            CopyIcon(tint = Color.White)
-                        }
+                            // 2. Select Text (OCR) Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    isOcrProcessing = true
+                                    onOcrRequested(
+                                        currentRect,
+                                        { text, blocks ->
+                                            isOcrProcessing = false
+                                            ocrResultText = text
+                                            ocrBlocks = blocks
+                                        },
+                                        { ex ->
+                                            isOcrProcessing = false
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.toast_ocr_failed),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        },
+                                        {
+                                            isOcrProcessing = false
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.toast_no_text_detected),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    )
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_select_text),
+                                testTag = "btn_select_text_crop",
+                                backgroundColor = Color(0x3300E5FF)
+                            ) {
+                                SelectTextIcon(tint = Color(0xFF00E5FF))
+                            }
 
-                        // 3. Share Button
-                        CropActionCircleButton(
-                            onClick = {
-                                onShareRequested(currentRect)
-                            },
-                            contentDescription = stringResource(R.string.crop_btn_share),
-                            testTag = "btn_share_crop"
-                        ) {
-                            ShareNodesIcon(tint = Color.White)
-                        }
+                            // 3. Ask Gemini Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    onGeminiRequested(currentRect)
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_gemini),
+                                testTag = "btn_gemini_crop"
+                            ) {
+                                GeminiSparkleIcon()
+                            }
 
-                        // 4. Save to Gallery Button
-                        CropActionCircleButton(
-                            onClick = {
-                                onSaveRequested(currentRect)
-                            },
-                            contentDescription = stringResource(R.string.crop_btn_save),
-                            testTag = "btn_save_crop"
-                        ) {
-                            SaveToGalleryIcon(tint = Color.White)
+                            // 4. Copy to Clipboard Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    onCopyRequested(currentRect)
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_copy),
+                                testTag = "btn_copy_crop"
+                            ) {
+                                CopyIcon(tint = Color.White)
+                            }
+
+                            // 5. Share Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    onShareRequested(currentRect)
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_share),
+                                testTag = "btn_share_crop"
+                            ) {
+                                ShareNodesIcon(tint = Color.White)
+                            }
+
+                            // 6. Save to Gallery Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    onSaveRequested(currentRect)
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_save),
+                                testTag = "btn_save_crop"
+                            ) {
+                                SaveToGalleryIcon(tint = Color.White)
+                            }
                         }
                     }
                 }
             }
         }
+
+        // 4. OCR Result Bottom Sheet Modal
+        AnimatedVisibility(
+            visible = ocrResultText != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            ocrResultText?.let { initialText ->
+                OcrResultSheet(
+                    text = initialText,
+                    blocks = ocrBlocks,
+                    onDismiss = {
+                        ocrResultText = null
+                        ocrBlocks = emptyList()
+                    },
+                    onCopyText = { textToCopy ->
+                        onCopyText(textToCopy)
+                    },
+                    onSearchGoogle = { query ->
+                        onSearchGoogle(query)
+                    },
+                    onShareText = { textToShare ->
+                        onShareText(textToShare)
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * OCR Result Sheet: Displays extracted text with interactive options
+ * to Copy, Search on Google, and Share.
+ */
+@Composable
+private fun OcrResultSheet(
+    text: String,
+    blocks: List<String>,
+    onDismiss: () -> Unit,
+    onCopyText: (String) -> Unit,
+    onSearchGoogle: (String) -> Unit,
+    onShareText: (String) -> Unit
+) {
+    var editableText by remember(text) { mutableStateOf(text) }
+    var isCopied by remember { mutableStateOf(false) }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ocr_result_card"),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = Color(0xF5131926),
+        tonalElevation = 8.dp,
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, Color(0x3300E5FF))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 18.dp)
+        ) {
+            // Drag handle
+            Box(
+                modifier = Modifier
+                    .size(36.dp, 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color(0x4494A3B8))
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0x2200E5FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.TextFields,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = stringResource(R.string.ocr_modal_title),
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val wordCount = editableText.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }.size
+                        Text(
+                            text = "$wordCount words • ${editableText.length} characters",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                // Close Button
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x33334155))
+                        .testTag("btn_ocr_close")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.crop_btn_close),
+                        tint = Color(0xFFCBD5E1),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Text Content Card
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF1E293B),
+                border = BorderStroke(1.dp, Color(0x33475569)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 90.dp, max = 220.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = editableText,
+                            color = Color(0xFFF1F5F9),
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
+                }
+            }
+
+            // Paragraph / Block chips (if multiple detected)
+            if (blocks.size > 1) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    blocks.take(3).forEachIndexed { index, block ->
+                        val snippet = block.take(24) + if (block.length > 24) "…" else ""
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (editableText == block) Color(0x3300E5FF) else Color(0x22334155),
+                            border = BorderStroke(
+                                1.dp,
+                                if (editableText == block) Color(0xFF00E5FF) else Color(0x22475569)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { editableText = block }
+                        ) {
+                            Text(
+                                text = snippet,
+                                color = if (editableText == block) Color(0xFF00E5FF) else Color(0xFF94A3B8),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Action Buttons (Copy, Google Search, Share)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // 1. Copy Text Button
+                Button(
+                    onClick = {
+                        onCopyText(editableText)
+                        isCopied = true
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .testTag("btn_ocr_copy"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isCopied) Color(0xFF10B981) else Color(0xFF00E5FF),
+                        contentColor = if (isCopied) Color.White else Color(0xFF0A0F1D)
+                    )
+                ) {
+                    Icon(
+                        imageVector = if (isCopied) Icons.Default.Check else Icons.Default.ContentCopy,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isCopied) "Copied!" else stringResource(R.string.ocr_btn_copy_all),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+
+                // 2. Google Search Button
+                Button(
+                    onClick = {
+                        onSearchGoogle(editableText)
+                    },
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .height(46.dp)
+                        .testTag("btn_ocr_search_google"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2563EB),
+                        contentColor = Color.White
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.ocr_btn_google_search),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+
+                // 3. Share Button
+                OutlinedButton(
+                    onClick = {
+                        onShareText(editableText)
+                    },
+                    modifier = Modifier
+                        .size(46.dp)
+                        .testTag("btn_ocr_share"),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0x4464748B)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFE2E8F0)
+                    ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = stringResource(R.string.ocr_btn_share_text),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Custom vector canvas for Select Text / OCR icon:
+ * Four bounding corner brackets with a centered uppercase 'T'.
+ */
+@Composable
+private fun SelectTextIcon(
+    modifier: Modifier = Modifier.size(22.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 1.8f * density
+        val w = size.width
+        val h = size.height
+        val bracketLen = w * 0.24f
+        val pad = w * 0.08f
+
+        // Top-left bracket
+        val tlPath = Path().apply {
+            moveTo(pad, pad + bracketLen)
+            lineTo(pad, pad)
+            lineTo(pad + bracketLen, pad)
+        }
+        drawPath(tlPath, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Top-right bracket
+        val trPath = Path().apply {
+            moveTo(w - pad - bracketLen, pad)
+            lineTo(w - pad, pad)
+            lineTo(w - pad, pad + bracketLen)
+        }
+        drawPath(trPath, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-left bracket
+        val blPath = Path().apply {
+            moveTo(pad, h - pad - bracketLen)
+            lineTo(pad, h - pad)
+            lineTo(pad + bracketLen, h - pad)
+        }
+        drawPath(blPath, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-right bracket
+        val brPath = Path().apply {
+            moveTo(w - pad - bracketLen, h - pad)
+            lineTo(w - pad, h - pad)
+            lineTo(w - pad, h - pad - bracketLen)
+        }
+        drawPath(brPath, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Stylized "T" in center
+        val cx = w / 2f
+        val topY = h * 0.28f
+        val botY = h * 0.72f
+        val barW = w * 0.40f
+
+        // Top bar of T
+        drawLine(
+            color = tint,
+            start = Offset(cx - barW / 2f, topY),
+            end = Offset(cx + barW / 2f, topY),
+            strokeWidth = 2.2f * density,
+            cap = StrokeCap.Round
+        )
+        // Vertical stem of T
+        drawLine(
+            color = tint,
+            start = Offset(cx, topY),
+            end = Offset(cx, botY),
+            strokeWidth = 2.2f * density,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
+ * Custom vector canvas for Share to Gemini icon:
+ * Distinctive 4-pointed sparkle star with curved concave rays.
+ */
+@Composable
+private fun GeminiSparkleIcon(
+    modifier: Modifier = Modifier.size(22.dp)
+) {
+    ComposeCanvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = size.width * 0.44f
+        val innerR = size.width * 0.12f
+
+        // Primary 4-pointed sparkle star with curved concave arcs
+        val starPath = Path().apply {
+            moveTo(cx, cy - r)
+            quadraticBezierTo(cx, cy - innerR, cx + r, cy)
+            quadraticBezierTo(cx + innerR, cy, cx, cy + r)
+            quadraticBezierTo(cx, cy + innerR, cx - r, cy)
+            quadraticBezierTo(cx - innerR, cy, cx, cy - r)
+            close()
+        }
+
+        drawPath(
+            path = starPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF472B6)),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height)
+            )
+        )
+
+        // Accent sparkle star
+        val smX = size.width * 0.78f
+        val smY = size.height * 0.22f
+        val smR = size.width * 0.16f
+        val smInnerR = size.width * 0.04f
+        val smStarPath = Path().apply {
+            moveTo(smX, smY - smR)
+            quadraticBezierTo(smX, smY - smInnerR, smX + smR, smY)
+            quadraticBezierTo(smX + smInnerR, smY, smX, smY + smR)
+            quadraticBezierTo(smX, smY + smInnerR, smX - smR, smY)
+            quadraticBezierTo(smX - smInnerR, smY, smX, smY - smR)
+            close()
+        }
+        drawPath(
+            path = smStarPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF67E8F9), Color(0xFFC084FC)),
+                start = Offset(smX - smR, smY - smR),
+                end = Offset(smX + smR, smY + smR)
+            )
+        )
     }
 }
 
@@ -633,13 +1433,14 @@ private fun CropActionCircleButton(
     contentDescription: String,
     testTag: String,
     modifier: Modifier = Modifier,
+    backgroundColor: Color = Color(0x28FFFFFF),
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = modifier
             .size(46.dp)
             .clip(CircleShape)
-            .background(Color(0x28FFFFFF))
+            .background(backgroundColor)
             .clickable(onClick = onClick)
             .testTag(testTag),
         contentAlignment = Alignment.Center

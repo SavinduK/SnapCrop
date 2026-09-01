@@ -27,8 +27,6 @@ class EmergencyKillSwitchTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        // Reset preferences to BOTH for testing kill-switch deactivation
-        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.BOTH)
         service = Robolectric.buildService(KeyCaptureService::class.java).create().get()
     }
 
@@ -47,9 +45,7 @@ class EmergencyKillSwitchTest {
     }
 
     @Test
-    fun `rapid triple-press on VOLUME_UP triggers emergency kill-switch and resets preference`() {
-        assertEquals(TriggerPreferenceManager.TriggerMode.BOTH, TriggerPreferenceManager.getTriggerMode(service))
-
+    fun `rapid triple-press on VOLUME_UP triggers screenshot crop capture`() {
         val baseTime = SystemClock.uptimeMillis()
 
         // 1st press
@@ -68,20 +64,14 @@ class EmergencyKillSwitchTest {
         val event2Up = createKeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_VOLUME_UP, baseTime + 250)
         service.onKeyEvent(event2Up)
 
-        // 3rd press (400ms later - well within 1000ms threshold)
+        // 3rd press (400ms later - within 1000ms threshold)
         val event3Down = createKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, baseTime + 400)
         val consumed3 = service.onKeyEvent(event3Down)
-        assertTrue("Third rapid press should be consumed as emergency kill-switch", consumed3)
-
-        // Preference should be reverted to VOLUME_DOWN_ONLY immediately
-        assertEquals(
-            TriggerPreferenceManager.TriggerMode.VOLUME_DOWN_ONLY,
-            TriggerPreferenceManager.getTriggerMode(service)
-        )
+        assertTrue("Third rapid press should be consumed to trigger screenshot capture", consumed3)
     }
 
     @Test
-    fun `two presses on VOLUME_UP do not trigger emergency kill-switch`() {
+    fun `two presses on VOLUME_UP do not trigger screenshot capture`() {
         val baseTime = SystemClock.uptimeMillis()
 
         // 1st press
@@ -93,10 +83,7 @@ class EmergencyKillSwitchTest {
         // 2nd press
         val event2Down = createKeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP, baseTime + 150)
         val consumed2 = service.onKeyEvent(event2Down)
-        assertFalse("Two presses should not trigger kill switch", consumed2)
-
-        // Preference remains BOTH
-        assertEquals(TriggerPreferenceManager.TriggerMode.BOTH, TriggerPreferenceManager.getTriggerMode(service))
+        assertFalse("Two presses should not trigger capture", consumed2)
     }
 
     @Test
@@ -113,3 +100,4 @@ class EmergencyKillSwitchTest {
         testBitmap.recycle()
     }
 }
+

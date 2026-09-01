@@ -1,49 +1,74 @@
 <resources>
     <string name="app_name">SnapCrop</string>
-    <string name="accessibility_service_name">SnapCrop Instant Capture Service</string>
-    <string name="accessibility_service_description">Monitors Volume Down long-press and 3-finger swipe gestures to capture the screen silently, open the cropping overlay, and share selections seamlessly.</string>
-    <string name="hero_badge">Background System Utility</string>
-    <string name="hero_subtitle">Long-press Volume Down (700ms) or swipe down with 3 fingers (> 300px) anywhere to capture without system dialogs, crop with precision cyan guides, and share immediately.</string>
-    <string name="title_setup">Setup &amp; Permissions</string>
-    <string name="desc_setup">Follow these steps to activate silent key capture and cropping overlays.</string>
-    <string name="step_accessibility_title">1. Enable Accessibility Service</string>
-    <string name="step_accessibility_desc">Required to detect the Volume Down long-press and capture screen content silently without MediaProjection prompts.</string>
-    <string name="btn_open_accessibility">Open Accessibility Settings</string>
-    <string name="step_battery_title">2. Ignore Battery Optimization</string>
-    <string name="step_battery_desc">Prevents Android from killing the background service when the phone is idle.</string>
-    <string name="btn_battery_optimization">Disable Battery Restriction</string>
-    <string name="step_gesture_title">3. Volume Down Hold (700ms)</string>
-    <string name="step_gesture_desc">Hold the Volume Down button for 700ms anywhere on your device. The volume indicator is suppressed, and the transparent cropping canvas appears.</string>
-    <string name="step_three_finger_title">4. Floating Edge Bar (Non-Blocking)</string>
-    <string name="step_three_finger_desc">A white translucent bar docked at the top-left screen edge. Tap to capture instantly or drag to reposition. 100% of touches outside the bar pass directly to underlying apps without blocking.</string>
-    <string name="btn_test_capture">Test Crop Overlay Now</string>
-    <string name="status_enabled">ACTIVE</string>
-    <string name="status_disabled">DISABLED</string>
-    <string name="status_unrestricted">UNRESTRICTED</string>
-    <string name="status_restricted">OPTIMIZED</string>
-    <string name="crop_instruction_hint">Drag across the screen to select a region to crop</string>
+    <string name="accessibility_service_name">SnapCrop Screen Capture</string>
+    <string name="accessibility_service_description">Enables the screen edge bar and instant button triggers to capture and crop your screen seamlessly.</string>
+    
+    <!-- Header & Status -->
+    <string name="hero_badge">Instant Screen Capture &amp; AI</string>
+    <string name="hero_title">Snap, Crop &amp; Share</string>
+    <string name="hero_subtitle">Crop anything on your screen in seconds and send it straight to Gemini, copy to clipboard, save, or share with friends.</string>
+    
+    <string name="status_ready_title">SnapCrop is Ready</string>
+    <string name="status_ready_desc">The side bar and 3-tap volume trigger are active on your screen.</string>
+    <string name="status_setup_needed_title">Setup Required</string>
+    <string name="status_setup_needed_desc">Enable permissions below so SnapCrop can capture and crop your screen.</string>
+    
+    <!-- How to capture -->
+    <string name="section_how_to_capture">Two Easy Ways to Capture</string>
+    <string name="trigger_slider_title">1. Screen Edge Bar</string>
+    <string name="trigger_slider_desc">Tap or swipe the subtle bar docked at the edge of your screen anytime.</string>
+    <string name="trigger_volume_title">2. Tap Volume Up 3 Times</string>
+    <string name="trigger_volume_desc">Rapidly click your physical Volume Up button 3 times to capture instantly.</string>
+    
+    <!-- Actions -->
+    <string name="section_what_you_can_do">What You Can Do</string>
+    <string name="feature_ocr_title">Select Text (OCR)</string>
+    <string name="feature_ocr_desc">Instantly recognize text from your screen selection, copy it, or search Google.</string>
+    <string name="feature_gemini_title">Ask Gemini AI</string>
+    <string name="feature_gemini_desc">Explain, summarize, translate, or solve anything you crop with one tap.</string>
+    <string name="feature_share_title">Quick Share</string>
+    <string name="feature_share_desc">Send your cropped image with an instant preview directly to any app.</string>
+    <string name="feature_copy_save_title">Copy &amp; Save</string>
+    <string name="feature_copy_save_desc">Copy the image to your clipboard or save it to your photo gallery.</string>
+    
+    <!-- Setup Steps -->
+    <string name="section_permissions">Setup &amp; Permissions</string>
+    <string name="step_accessibility_title">Screen Capture Permission</string>
+    <string name="step_accessibility_desc">Allows the floating edge bar and silent screen capture.</string>
+    <string name="btn_open_accessibility">Enable in Settings</string>
+    <string name="step_battery_title">Keep Active in Background</string>
+    <string name="step_battery_desc">Allows SnapCrop to stay responsive even when your phone is asleep.</string>
+    <string name="btn_battery_optimization">Allow Background Use</string>
+    
+    <string name="btn_test_capture">Try Cropping Now</string>
+    <string name="status_enabled">Active</string>
+    <string name="status_disabled">Not Enabled</string>
+    <string name="status_unrestricted">Allowed</string>
+    <string name="status_restricted">Recommended</string>
+    
+    <!-- Crop Screen Strings -->
+    <string name="crop_instruction_hint">Drag across the screen to select a region</string>
+    <string name="crop_btn_select_text">Select Text</string>
+    <string name="crop_btn_gemini">Ask Gemini</string>
     <string name="crop_btn_share">Share</string>
     <string name="crop_btn_reset">Reset</string>
     <string name="crop_btn_close">Close</string>
     <string name="crop_btn_copy">Copy</string>
     <string name="crop_btn_save">Save</string>
     <string name="toast_copied_to_clipboard">Copied to clipboard</string>
+    <string name="toast_text_copied">Text copied to clipboard</string>
+    <string name="toast_no_text_detected">No text detected in selected region</string>
+    <string name="toast_ocr_failed">Failed to recognize text</string>
     <string name="toast_saved_to_gallery">Saved to Gallery</string>
-    <string name="crop_hint_initial">Drag anywhere to draw crop box</string>
-    <string name="crop_hint_selected">Drag handles to resize • Inside to move • Outside to reselect</string>
-    <string name="share_cropped_title">Share Cropped Screenshot</string>
-    <string name="trigger_selection_title">Screenshot Trigger Mode</string>
-    <string name="trigger_selection_desc">Choose your trigger method. Volume Down long-press is recommended for zero on-screen elements, or use the white translucent edge bar.</string>
-    <string name="trigger_mode_vol_down">Volume Down Long-Press</string>
-    <string name="trigger_mode_vol_down_desc">Default. Suppresses volume dialog. Zero on-screen overlay; 100% untouched OS screen touches, typing, and gaming.</string>
-    <string name="trigger_mode_vol_down_badge">DEFAULT • RECOMMENDED</string>
-    <string name="trigger_mode_three_finger">White Translucent Edge Bar</string>
-    <string name="trigger_mode_three_finger_desc">White translucent bar docked at top-left edge (FLAG_NOT_TOUCH_MODAL). Tap or drag to capture. Zero touches blocked across the rest of the display.</string>
-    <string name="trigger_mode_both">Both Triggers Active</string>
-    <string name="trigger_mode_both_desc">Enable both Volume Down long-press and the top-left white translucent edge bar simultaneously.</string>
-    <string name="emergency_kill_switch_title">Emergency Kill-Switch (3× Volume Up)</string>
-    <string name="emergency_kill_switch_desc">Rapidly triple-press Volume Up anytime to immediately remove the touch overlay and unblock the screen.</string>
-    <string name="emergency_kill_switch_badge">SAFETY GUARD</string>
-    <string name="emergency_kill_switch_toast">Emergency Kill-Switch: Screen overlay force-removed</string>
+    <string name="toast_sending_to_gemini">Opening in Gemini…</string>
+    <string name="toast_gemini_not_installed">Gemini app not found. Opening Play Store…</string>
+    <string name="ocr_modal_title">Recognized Text</string>
+    <string name="ocr_btn_copy_all">Copy Text</string>
+    <string name="ocr_btn_google_search">Google Search</string>
+    <string name="ocr_btn_share_text">Share Text</string>
+    <string name="ocr_extracting">Recognizing text…</string>
+    <string name="crop_hint_initial">Drag anywhere to select area</string>
+    <string name="crop_hint_selected">Drag edges to adjust • Drag inside to move</string>
+    <string name="share_cropped_title">Cropped Screenshot</string>
 </resources>
 

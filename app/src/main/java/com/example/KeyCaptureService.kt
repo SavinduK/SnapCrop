@@ -75,23 +75,11 @@ class KeyCaptureService : AccessibilityService() {
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var isVolumeDownActive = false
-    private var isLongPressTriggered = false
-    private var volumeDownStartTime = 0L
-
     private val volumeUpPressTimestamps = mutableListOf<Long>()
     private var isKillSwitchTriggered = false
+    private var isOverlayHiddenByCropActivity = false
 
     private var touchOverlayManager: TouchOverlayManager? = null
-
-    private val longPressRunnable = Runnable {
-        if (isVolumeDownActive) {
-            isLongPressTriggered = true
-            Log.d(TAG, "Volume Down long-press threshold reached (${LONG_PRESS_THRESHOLD_MS}ms). Triggering screenshot.")
-            vibrateFeedback()
-            performScreenCapture()
-        }
-    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -107,19 +95,30 @@ class KeyCaptureService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Not needed for key event interception, but required by AccessibilityService
+        // Keep the floating slider attached and visible across app changes and system UI transitions
+        if (!isOverlayHiddenByCropActivity && TriggerPreferenceManager.isThreeFingerEnabled(this)) {
+            ensureOverlayActive()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "Configuration changed, ensuring overlay is attached and properly positioned")
+        mainHandler.postDelayed({
+            if (!isOverlayHiddenByCropActivity && TriggerPreferenceManager.isThreeFingerEnabled(this)) {
+                ensureOverlayActive()
+            }
+        }, 120L)
     }
 
     override fun onInterrupt() {
         Log.w(TAG, "KeyCaptureService interrupted")
-        resetKeyHoldState()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (instance == this) {
             instance = null
         }
-        resetKeyHoldState()
         touchOverlayManager?.detachOverlay()
         touchOverlayManager = null
         return super.onUnbind(intent)
@@ -129,7 +128,6 @@ class KeyCaptureService : AccessibilityService() {
         if (instance == this) {
             instance = null
         }
-        resetKeyHoldState()
         touchOverlayManager?.detachOverlay()
         touchOverlayManager = null
         super.onDestroy()
@@ -137,11 +135,10 @@ class KeyCaptureService : AccessibilityService() {
 
     /**
      * Intercepts key events to detect:
-     * 1. Emergency safety kill-switch: rapid triple-press on KEYCODE_VOLUME_UP (immediately unblocks screen).
-     * 2. Volume Down long press (700ms+) for silent screenshot capture.
+     * Triple-press on KEYCODE_VOLUME_UP (3 rapid taps) to trigger the screenshot-crop workflow.
      */
     public override fun onKeyEvent(event: KeyEvent): Boolean {
-        // 1. Emergency Safety Kill-Switch: check for rapid triple-press on KEYCODE_VOLUME_UP
+        // Triple-press on Volume Up to trigger instant screenshot crop
         if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 val now = SystemClock.uptimeMillis()
@@ -151,143 +148,45 @@ class KeyCaptureService : AccessibilityService() {
                 if (volumeUpPressTimestamps.size >= 3) {
                     volumeUpPressTimestamps.clear()
                     isKillSwitchTriggered = true
-                    triggerEmergencyKillSwitch()
+                    Log.d(TAG, "Triple-tap Volume Up detected! Triggering screenshot capture.")
+                    vibrateFeedback()
+                    performScreenCapture()
                     return true // Consume 3rd press so system volume does not change
                 }
             } else if (event.action == KeyEvent.ACTION_UP && isKillSwitchTriggered) {
                 isKillSwitchTriggered = false
                 return true
             }
-            return super.onKeyEvent(event)
         }
-
-        // 2. Volume Down Long-Press Screenshot Trigger
-        if (!TriggerPreferenceManager.isVolumeDownEnabled(this)) {
-            return super.onKeyEvent(event)
-        }
-
-        if (event.keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return super.onKeyEvent(event)
-        }
-
-        when (event.action) {
-            KeyEvent.ACTION_DOWN -> {
-                if (event.repeatCount == 0) {
-                    // Key initially pressed
-                    isVolumeDownActive = true
-                    isLongPressTriggered = false
-                    volumeDownStartTime = SystemClock.uptimeMillis()
-                    mainHandler.removeCallbacks(longPressRunnable)
-                    mainHandler.postDelayed(longPressRunnable, LONG_PRESS_THRESHOLD_MS)
-                }
-
-                // If already triggered, consume event to suppress system volume changes
-                if (isLongPressTriggered) {
-                    return true
-                }
-
-                // Check elapsed time directly in case repeat events arrive after threshold
-                val elapsed = SystemClock.uptimeMillis() - volumeDownStartTime
-                if (elapsed >= LONG_PRESS_THRESHOLD_MS) {
-                    if (!isLongPressTriggered) {
-                        isLongPressTriggered = true
-                        mainHandler.removeCallbacks(longPressRunnable)
-                        vibrateFeedback()
-                        performScreenCapture()
-                    }
-                    return true // Consume key event
-                }
-
-                // Allow normal volume down behavior if not yet held for 700ms
-                return false
-            }
-
-            KeyEvent.ACTION_UP -> {
-                mainHandler.removeCallbacks(longPressRunnable)
-                isVolumeDownActive = false
-
-                if (isLongPressTriggered) {
-                    isLongPressTriggered = false
-                    // Consume the UP event so system doesn't register a release key stroke
-                    return true
-                }
-                return false
-            }
-        }
-
         return super.onKeyEvent(event)
-    }
-
-    /**
-     * Emergency safety kill-switch:
-     * When rapid triple-press on KEYCODE_VOLUME_UP is detected,
-     * immediately invokes windowManager.removeView(overlayView) to force-remove
-     * the transparent touch listener and unblock the screen.
-     */
-    fun triggerEmergencyKillSwitch() {
-        Log.w(TAG, "EMERGENCY SAFETY KILL-SWITCH ACTIVATED: Force-removing touch overlay via windowManager.removeView")
-        try {
-            touchOverlayManager?.let { manager ->
-                val wm = manager.windowManager
-                val view = manager.overlayView
-                if (wm != null && view != null) {
-                    wm.removeView(view)
-                    Log.w(TAG, "Successfully invoked windowManager.removeView(overlayView)")
-                }
-                manager.forceRemoveOverlay()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error executing emergency kill-switch windowManager.removeView", e)
-        }
-
-        // Reset trigger preference so 3-finger overlay is deactivated
-        TriggerPreferenceManager.setTriggerMode(this, TriggerPreferenceManager.TriggerMode.VOLUME_DOWN_ONLY)
-
-        vibrateEmergencyFeedback()
-        mainHandler.post {
-            Toast.makeText(
-                this,
-                getString(R.string.emergency_kill_switch_toast),
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
-
-    private fun vibrateEmergencyFeedback() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                vibratorManager?.defaultVibrator?.vibrate(
-                    VibrationEffect.createWaveform(longArrayOf(0, 100, 80, 150), -1)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(longArrayOf(0, 100, 80, 150), -1)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Emergency vibration feedback unavailable: ${e.message}")
-        }
-    }
-
-    private fun resetKeyHoldState() {
-        mainHandler.removeCallbacks(longPressRunnable)
-        isVolumeDownActive = false
-        isLongPressTriggered = false
     }
 
     /**
      * Toggles visibility of the floating touch overlay (e.g. while CropOverlayActivity is active or taking screenshot).
      */
     fun setOverlayVisibility(visible: Boolean) {
+        isOverlayHiddenByCropActivity = !visible
         mainHandler.post {
             if (!visible) {
                 touchOverlayManager?.setOverlayVisibility(false)
             } else {
                 if (TriggerPreferenceManager.isThreeFingerEnabled(this)) {
-                    touchOverlayManager?.setOverlayVisibility(true)
+                    ensureOverlayActive()
                 }
+            }
+        }
+    }
+
+    /**
+     * Ensures the floating overlay is attached and active.
+     */
+    fun ensureOverlayActive() {
+        if (isOverlayHiddenByCropActivity) return
+        mainHandler.post {
+            if (touchOverlayManager == null) {
+                setupTouchOverlay()
+            } else {
+                touchOverlayManager?.ensureAttachedAndVisible()
             }
         }
     }
