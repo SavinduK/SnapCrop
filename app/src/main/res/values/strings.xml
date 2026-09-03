@@ -14,7 +14,7 @@
     <string name="status_setup_needed_desc">Enable permissions below so SnapCrop can capture and crop your screen.</string>
     
     <!-- How to capture -->
-    <string name="section_how_to_capture">Two Easy Ways to Capture</string>
+    <string name="section_how_to_capture">Triggers</string>
     <string name="trigger_slider_title">1. Screen Edge Bar</string>
     <string name="trigger_slider_desc">Tap or swipe the subtle bar docked at the edge of your screen anytime.</string>
     <string name="trigger_volume_title">2. Tap Volume Up 3 Times</string>
@@ -63,8 +63,8 @@
     <string name="toast_sending_to_gemini">Opening in Gemini…</string>
     <string name="toast_gemini_not_installed">Gemini app not found. Opening Play Store…</string>
     <string name="ocr_modal_title">Recognized Text</string>
-    <string name="ocr_btn_copy_all">Copy Text</string>
-    <string name="ocr_btn_google_search">Google Search</string>
+    <string name="ocr_btn_copy_all">Copy</string>
+    <string name="ocr_btn_google_search">Search</string>
     <string name="ocr_btn_share_text">Share Text</string>
     <string name="ocr_extracting">Recognizing text…</string>
     <string name="crop_hint_initial">Drag anywhere to select area</string>

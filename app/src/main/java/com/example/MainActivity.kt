@@ -178,7 +178,6 @@ fun SnapCropMainScreen() {
                 icon = Icons.Default.TouchApp,
                 iconTint = CyanPrimary,
                 title = stringResource(R.string.trigger_slider_title),
-                badge = "On Screen",
                 description = stringResource(R.string.trigger_slider_desc),
                 testTag = "trigger_card_slider"
             )
@@ -187,7 +186,6 @@ fun SnapCropMainScreen() {
                 icon = Icons.Default.VolumeUp,
                 iconTint = ElectricBlue,
                 title = stringResource(R.string.trigger_volume_title),
-                badge = "Hardware Button",
                 description = stringResource(R.string.trigger_volume_desc),
                 testTag = "trigger_card_volume"
             )
@@ -397,7 +395,6 @@ private fun CaptureTriggerCard(
     icon: ImageVector,
     iconTint: Color,
     title: String,
-    badge: String,
     description: String,
     testTag: String
 ) {
@@ -413,7 +410,7 @@ private fun CaptureTriggerCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
@@ -431,29 +428,12 @@ private fun CaptureTriggerCard(
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = title,
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = iconTint.copy(alpha = 0.15f)
-                    ) {
-                        Text(
-                            text = badge,
-                            color = iconTint,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = description,
@@ -575,40 +555,12 @@ private fun PermissionRowItem(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = title,
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    if (isGranted) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = MintActive.copy(alpha = 0.15f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MintActive,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text(
-                                    text = stringResource(R.string.status_enabled),
-                                    color = MintActive,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = description,
@@ -620,7 +572,32 @@ private fun PermissionRowItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            if (!isGranted) {
+            if (isGranted) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MintActive.copy(alpha = 0.15f),
+                    border = BorderStroke(1.dp, MintActive.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = MintActive,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.status_enabled),
+                            color = MintActive,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            } else {
                 Button(
                     onClick = onClick,
                     modifier = Modifier.testTag(testTag),

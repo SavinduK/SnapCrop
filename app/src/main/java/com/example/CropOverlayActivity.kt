@@ -1110,20 +1110,12 @@ private fun OcrResultSheet(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    Column {
-                        Text(
-                            text = stringResource(R.string.ocr_modal_title),
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        val wordCount = editableText.trim().split("\\s+".toRegex()).filter { it.isNotBlank() }.size
-                        Text(
-                            text = "$wordCount words • ${editableText.length} characters",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 12.sp
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.ocr_modal_title),
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
                 // Close Button
@@ -1172,41 +1164,9 @@ private fun OcrResultSheet(
                 }
             }
 
-            // Paragraph / Block chips (if multiple detected)
-            if (blocks.size > 1) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    blocks.take(3).forEachIndexed { index, block ->
-                        val snippet = block.take(24) + if (block.length > 24) "…" else ""
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (editableText == block) Color(0x3300E5FF) else Color(0x22334155),
-                            border = BorderStroke(
-                                1.dp,
-                                if (editableText == block) Color(0xFF00E5FF) else Color(0x22475569)
-                            ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .clickable { editableText = block }
-                        ) {
-                            Text(
-                                text = snippet,
-                                color = if (editableText == block) Color(0xFF00E5FF) else Color(0xFF94A3B8),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Action Buttons (Copy, Google Search, Share)
+            // Action Buttons (Copy, Search, Share)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
