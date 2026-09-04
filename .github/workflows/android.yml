@@ -22,6 +22,12 @@ jobs:
       - name: Accept SDK licenses
         run: yes | sdkmanager --licenses || true
 
+      - name: Allow legacy Kotlin source sets (AGP 9 built-in Kotlin workaround)
+        run: |
+          if ! grep -q "android.disallowKotlinSourceSets" gradle.properties 2>/dev/null; then
+            echo "android.disallowKotlinSourceSets=false" >> gradle.properties
+          fi
+
       - name: Pin KSP to match Kotlin version
         run: |
           KOTLIN_VERSION=$(grep -oP '(?<=^kotlin = ")[^"]+' gradle/libs.versions.toml)
