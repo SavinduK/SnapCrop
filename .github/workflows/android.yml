@@ -27,7 +27,7 @@ jobs:
           KOTLIN_VERSION=$(grep -oP '(?<=^kotlin = ")[^"]+' gradle/libs.versions.toml)
           echo "Detected Kotlin version: $KOTLIN_VERSION"
 
-          KSP_VERSION=$(curl -s "https://dl.google.com/dl/android/maven2/com/google/devtools/ksp/com.google.devtools.ksp.gradle.plugin/maven-metadata.xml" \
+          KSP_VERSION=$(curl -s "https://repo1.maven.org/maven2/com/google/devtools/ksp/com.google.devtools.ksp.gradle.plugin/maven-metadata.xml" \
             | grep -oP "<version>${KOTLIN_VERSION}-[0-9.]+</version>" \
             | sed -E 's/<\/?version>//g' | sort -V | tail -1)
 
