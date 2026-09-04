@@ -1,6 +1,7 @@
 name: Android Build
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -13,18 +14,34 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '17'   # required by AGP 9.1.1
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Pin KSP to match Kotlin version
+        run: |
+          KOTLIN_VERSION=$(grep -oP '(?<=^kotlin = ")[^"]+' gradle/libs.versions.toml)
+          echo "Detected Kotlin version: $KOTLIN_VERSION"
+
+          KSP_VERSION=$(curl -s "https://dl.google.com/dl/android/maven2/com/google/devtools/ksp/com.google.devtools.ksp.gradle.plugin/maven-metadata.xml" \
+            | grep -oP "<version>${KOTLIN_VERSION}-[0-9.]+</version>" \
+            | sed -E 's/<\/?version>//g' | sort -V | tail -1)
+
+          if [ -z "$KSP_VERSION" ]; then
+            echo "No matching KSP release found for Kotlin $KOTLIN_VERSION"
+            exit 1
+          fi
+          echo "Pinning KSP to: $KSP_VERSION"
+          sed -i "s/^googleDevtoolsKsp = \".*\"/googleDevtoolsKsp = \"$KSP_VERSION\"/" gradle/libs.versions.toml
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: wrapper  # falls back to latest release since no wrapper is present
-
-      - name: Accept licenses
-        run: yes | sdkmanager --licenses || true
+          gradle-version: '9.3.1'   # minimum required by AGP 9.1.1
 
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
