@@ -135,11 +135,14 @@ class KeyCaptureService : AccessibilityService() {
 
     /**
      * Intercepts key events to detect:
-     * Triple-press on KEYCODE_VOLUME_UP (3 rapid taps) to trigger the screenshot-crop workflow.
+     * Triple-press on Power button or Volume Up (3 rapid taps) to trigger the screenshot-crop workflow.
      */
     public override fun onKeyEvent(event: KeyEvent): Boolean {
-        // Triple-press on Volume Up to trigger instant screenshot crop
-        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+        val isTargetKey = event.keyCode == KeyEvent.KEYCODE_POWER ||
+                event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
+                event.keyCode == KeyEvent.KEYCODE_SOFT_SLEEP
+
+        if (isTargetKey && TriggerPreferenceManager.isPowerTripleTapEnabled(this)) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 val now = SystemClock.uptimeMillis()
                 volumeUpPressTimestamps.add(now)
@@ -148,10 +151,10 @@ class KeyCaptureService : AccessibilityService() {
                 if (volumeUpPressTimestamps.size >= 3) {
                     volumeUpPressTimestamps.clear()
                     isKillSwitchTriggered = true
-                    Log.d(TAG, "Triple-tap Volume Up detected! Triggering screenshot capture.")
+                    Log.d(TAG, "Triple-tap Power button detected! Triggering screenshot capture.")
                     vibrateFeedback()
                     performScreenCapture()
-                    return true // Consume 3rd press so system volume does not change
+                    return true // Consume 3rd press
                 }
             } else if (event.action == KeyEvent.ACTION_UP && isKillSwitchTriggered) {
                 isKillSwitchTriggered = false

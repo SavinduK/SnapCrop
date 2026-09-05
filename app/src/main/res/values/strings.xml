@@ -15,10 +15,10 @@
     
     <!-- How to capture -->
     <string name="section_how_to_capture">Triggers</string>
-    <string name="trigger_slider_title">1. Screen Edge Bar</string>
+    <string name="trigger_slider_title">Edge Panel</string>
     <string name="trigger_slider_desc">Tap or swipe the subtle bar docked at the edge of your screen anytime.</string>
-    <string name="trigger_volume_title">2. Tap Volume Up 3 Times</string>
-    <string name="trigger_volume_desc">Rapidly click your physical Volume Up button 3 times to capture instantly.</string>
+    <string name="trigger_power_title">3 Times Tap Power Button</string>
+    <string name="trigger_power_desc">Rapidly press your physical Power button 3 times to capture instantly.</string>
     
     <!-- Actions -->
     <string name="section_what_you_can_do">What You Can Do</string>

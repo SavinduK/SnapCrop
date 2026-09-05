@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
@@ -58,6 +59,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -141,6 +144,10 @@ fun SnapCropMainScreen() {
 
     val isAllReady = isAccessibilityEnabled
 
+    var currentTriggerMode by remember {
+        mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
+    }
+
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
@@ -165,7 +172,7 @@ fun SnapCropMainScreen() {
                 onEnableClick = { openAccessibilitySettings(context) }
             )
 
-            // Section: How to Capture (Edge Bar & 3-Tap Volume)
+            // Section: How to Capture (Triggers)
             Text(
                 text = stringResource(R.string.section_how_to_capture),
                 color = TextPrimary,
@@ -179,15 +186,25 @@ fun SnapCropMainScreen() {
                 iconTint = CyanPrimary,
                 title = stringResource(R.string.trigger_slider_title),
                 description = stringResource(R.string.trigger_slider_desc),
+                isSelected = currentTriggerMode == TriggerPreferenceManager.TriggerMode.EDGE_PANEL,
+                onSelect = {
+                    currentTriggerMode = TriggerPreferenceManager.TriggerMode.EDGE_PANEL
+                    KeyCaptureService.updateTriggerMode(context, TriggerPreferenceManager.TriggerMode.EDGE_PANEL)
+                },
                 testTag = "trigger_card_slider"
             )
 
             CaptureTriggerCard(
-                icon = Icons.Default.VolumeUp,
+                icon = Icons.Default.PowerSettingsNew,
                 iconTint = ElectricBlue,
-                title = stringResource(R.string.trigger_volume_title),
-                description = stringResource(R.string.trigger_volume_desc),
-                testTag = "trigger_card_volume"
+                title = stringResource(R.string.trigger_power_title),
+                description = stringResource(R.string.trigger_power_desc),
+                isSelected = currentTriggerMode == TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP,
+                onSelect = {
+                    currentTriggerMode = TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP
+                    KeyCaptureService.updateTriggerMode(context, TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP)
+                },
+                testTag = "trigger_card_power"
             )
 
             // Section: What You Can Do (Gemini AI, Share with preview, Copy & Save)
@@ -396,15 +413,24 @@ private fun CaptureTriggerCard(
     iconTint: Color,
     title: String,
     description: String,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
     testTag: String
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onSelect() }
             .testTag(testTag),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = SlateSurface),
-        border = BorderStroke(1.dp, SlateBorder)
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) SlateSurface else SlateSurface.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(
+            width = if (isSelected) 1.5.dp else 1.dp,
+            color = if (isSelected) iconTint else SlateBorder
+        )
     ) {
         Row(
             modifier = Modifier
@@ -416,13 +442,13 @@ private fun CaptureTriggerCard(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
+                    .background(if (isSelected) iconTint.copy(alpha = 0.2f) else iconTint.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconTint,
+                    tint = if (isSelected) iconTint else iconTint.copy(alpha = 0.5f),
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -442,6 +468,16 @@ private fun CaptureTriggerCard(
                     lineHeight = 18.sp
                 )
             }
+            Spacer(modifier = Modifier.width(12.dp))
+            RadioButton(
+                selected = isSelected,
+                onClick = onSelect,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = iconTint,
+                    unselectedColor = TextSecondary.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.testTag("${testTag}_radio")
+            )
         }
     }
 }

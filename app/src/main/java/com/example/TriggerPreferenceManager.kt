@@ -6,15 +6,16 @@ import android.content.SharedPreferences
 /**
  * TriggerPreferenceManager
  *
- * Persists the user's screenshot trigger configuration.
- * Default is SLIDER (Horizontal Edge Slider docked at screen edge).
+ * Persists the user's screenshot trigger configuration in permanent SharedPreferences.
+ * Default is EDGE_PANEL (Screen Edge Bar docked at screen edge).
  */
 object TriggerPreferenceManager {
     private const val PREFS_NAME = "snapcrop_trigger_prefs"
     private const val KEY_TRIGGER_MODE = "trigger_mode"
 
     enum class TriggerMode {
-        SLIDER   // Default: Horizontal edge slider bar docked on screen
+        EDGE_PANEL,             // Default: Screen Edge Panel docked on screen
+        POWER_BUTTON_TRIPLE_TAP // 3 times tap of Power Button
     }
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -22,11 +23,11 @@ object TriggerPreferenceManager {
     }
 
     fun getTriggerMode(context: Context): TriggerMode {
-        val modeStr = getPrefs(context).getString(KEY_TRIGGER_MODE, TriggerMode.SLIDER.name)
-        return try {
-            TriggerMode.valueOf(modeStr ?: TriggerMode.SLIDER.name)
-        } catch (e: Exception) {
-            TriggerMode.SLIDER
+        val modeStr = getPrefs(context).getString(KEY_TRIGGER_MODE, TriggerMode.EDGE_PANEL.name)
+        return when (modeStr) {
+            "SLIDER", "EDGE_PANEL" -> TriggerMode.EDGE_PANEL
+            "POWER_BUTTON_TRIPLE_TAP", "POWER", "VOLUME" -> TriggerMode.POWER_BUTTON_TRIPLE_TAP
+            else -> TriggerMode.EDGE_PANEL
         }
     }
 
@@ -34,12 +35,21 @@ object TriggerPreferenceManager {
         getPrefs(context).edit().putString(KEY_TRIGGER_MODE, mode.name).apply()
     }
 
-    fun isVolumeDownEnabled(context: Context): Boolean {
-        return false // Volume down long-press removed per user instruction
+    fun isEdgePanelEnabled(context: Context): Boolean {
+        return getTriggerMode(context) == TriggerMode.EDGE_PANEL
+    }
+
+    fun isPowerTripleTapEnabled(context: Context): Boolean {
+        return getTriggerMode(context) == TriggerMode.POWER_BUTTON_TRIPLE_TAP
     }
 
     fun isThreeFingerEnabled(context: Context): Boolean {
-        return true // Horizontal edge slider is default and active
+        return isEdgePanelEnabled(context)
+    }
+
+    fun isVolumeDownEnabled(context: Context): Boolean {
+        return isPowerTripleTapEnabled(context)
     }
 }
+
 

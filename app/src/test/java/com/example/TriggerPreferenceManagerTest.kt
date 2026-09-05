@@ -28,20 +28,24 @@ class TriggerPreferenceManagerTest {
     }
 
     @Test
-    fun `default trigger mode is SLIDER with three finger slider enabled`() {
+    fun `default trigger mode is EDGE_PANEL with edge panel enabled`() {
         val mode = TriggerPreferenceManager.getTriggerMode(context)
-        assertEquals(TriggerPreferenceManager.TriggerMode.SLIDER, mode)
-        assertFalse(TriggerPreferenceManager.isVolumeDownEnabled(context))
-        assertTrue(TriggerPreferenceManager.isThreeFingerEnabled(context))
+        assertEquals(TriggerPreferenceManager.TriggerMode.EDGE_PANEL, mode)
+        assertTrue(TriggerPreferenceManager.isEdgePanelEnabled(context))
+        assertFalse(TriggerPreferenceManager.isPowerTripleTapEnabled(context))
     }
 
     @Test
-    fun `setting SLIDER updates preferences correctly`() {
-        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.SLIDER)
+    fun `setting POWER_BUTTON_TRIPLE_TAP updates preferences correctly`() {
+        TriggerPreferenceManager.setTriggerMode(
+            context,
+            TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP
+        )
 
         val mode = TriggerPreferenceManager.getTriggerMode(context)
-        assertEquals(TriggerPreferenceManager.TriggerMode.SLIDER, mode)
-        assertTrue(TriggerPreferenceManager.isThreeFingerEnabled(context))
+        assertEquals(TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP, mode)
+        assertTrue(TriggerPreferenceManager.isPowerTripleTapEnabled(context))
+        assertFalse(TriggerPreferenceManager.isEdgePanelEnabled(context))
     }
 }
 
