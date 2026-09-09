@@ -27,6 +27,7 @@ class EmergencyKillSwitchTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        TriggerPreferenceManager.setTriggerMode(context, TriggerPreferenceManager.TriggerMode.POWER_BUTTON_TRIPLE_TAP)
         service = Robolectric.buildService(KeyCaptureService::class.java).create().get()
     }
 

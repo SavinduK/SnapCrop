@@ -166,7 +166,7 @@ class CropOverlayActivity : ComponentActivity() {
                         selectionViewRef = view
                     },
                     onGeminiRequested = { rect ->
-                        handleCropAndShareToGemini(rect)
+                        handleCropAndShareToAi(rect)
                     },
                     onOcrRequested = { rect, onTextExtracted, onError, onEmpty ->
                         performTextRecognition(rect, onTextExtracted, onEmpty, onError)
@@ -326,10 +326,10 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     /**
-     * Crops the selection and sends it directly to the Gemini app if installed,
-     * or opens the Google Play Store page for Gemini if not installed.
+     * Extracts cropped bitmap from selection and shares to the user's selected AI model
+     * (Gemini, ChatGPT, or Claude), opening the app directly or falling back to Play Store / web.
      */
-    private fun handleCropAndShareToGemini(rect: RectF) {
+    private fun handleCropAndShareToAi(rect: RectF) {
         val croppedBitmap = extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
@@ -337,8 +337,9 @@ class CropOverlayActivity : ComponentActivity() {
         }
 
         try {
+            val selectedModel = AiModelPreferenceManager.getSelectedModel(this)
             val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
-            val croppedFile = File(imagesDir, "gemini_crop_${System.currentTimeMillis()}.png")
+            val croppedFile = File(imagesDir, "${selectedModel.id}_crop_${System.currentTimeMillis()}.png")
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
@@ -350,62 +351,57 @@ class CropOverlayActivity : ComponentActivity() {
                 croppedFile
             )
 
-            val geminiPackage = "com.google.android.apps.bard"
-            val googleSearchPackage = "com.google.android.googlequicksearchbox"
-
             // Explicitly grant URI read permissions to target packages
             try {
-                grantUriPermission(geminiPackage, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                grantUriPermission(selectedModel.packageName, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (selectedModel == AiModelPreferenceManager.AiModel.GEMINI) {
+                    grantUriPermission("com.google.android.googlequicksearchbox", contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not pre-grant URI permission to $geminiPackage", e)
-            }
-            try {
-                grantUriPermission(googleSearchPackage, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) {
-                Log.w(TAG, "Could not pre-grant URI permission to $googleSearchPackage", e)
+                Log.w(TAG, "Could not pre-grant URI permission to ${selectedModel.packageName}", e)
             }
 
             var launched = false
 
-            // Strategy 1: Direct ACTION_SEND targeting Gemini standalone app
-            val geminiSendIntent = Intent(Intent.ACTION_SEND).apply {
+            // Strategy 1: Direct ACTION_SEND targeting selected AI standalone app
+            val sendIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 setDataAndType(contentUri, "image/png")
                 putExtra(Intent.EXTRA_STREAM, contentUri)
-                clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
-                setPackage(geminiPackage)
+                clipData = ClipData.newUri(contentResolver, "${selectedModel.displayName} Screenshot", contentUri)
+                setPackage(selectedModel.packageName)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
-            if (geminiSendIntent.resolveActivity(packageManager) != null ||
-                packageManager.queryIntentActivities(geminiSendIntent, 0).isNotEmpty()
+            if (sendIntent.resolveActivity(packageManager) != null ||
+                packageManager.queryIntentActivities(sendIntent, 0).isNotEmpty()
             ) {
                 try {
-                    startActivity(geminiSendIntent)
-                    Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                    startActivity(sendIntent)
+                    Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                     launched = true
                 } catch (e: Exception) {
-                    Log.d(TAG, "Error starting geminiSendIntent", e)
+                    Log.d(TAG, "Error starting sendIntent for ${selectedModel.displayName}", e)
                 }
             }
 
-            // Strategy 2: Launch Intent for Gemini App
+            // Strategy 2: Launch Intent for AI App
             if (!launched) {
-                val geminiLaunchIntent = packageManager.getLaunchIntentForPackage(geminiPackage)?.apply {
+                val launchIntent = packageManager.getLaunchIntentForPackage(selectedModel.packageName)?.apply {
                     action = Intent.ACTION_SEND
                     type = "image/png"
                     setDataAndType(contentUri, "image/png")
                     putExtra(Intent.EXTRA_STREAM, contentUri)
-                    clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
+                    clipData = ClipData.newUri(contentResolver, "${selectedModel.displayName} Screenshot", contentUri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                if (geminiLaunchIntent != null) {
+                if (launchIntent != null) {
                     try {
-                        startActivity(geminiLaunchIntent)
-                        Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                        startActivity(launchIntent)
+                        Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                         launched = true
                     } catch (e: Exception) {
-                        Log.d(TAG, "Error starting geminiLaunchIntent", e)
+                        Log.d(TAG, "Error starting launchIntent for ${selectedModel.displayName}", e)
                     }
                 }
             }
@@ -413,22 +409,22 @@ class CropOverlayActivity : ComponentActivity() {
             // Strategy 3: Try starting without resolve check in case queries was filtered
             if (!launched) {
                 try {
-                    startActivity(geminiSendIntent)
-                    Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
+                    startActivity(sendIntent)
+                    Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                     launched = true
                 } catch (e: Exception) {
                     Log.d(TAG, "Direct launch without check failed: ${e.message}")
                 }
             }
 
-            // Strategy 4: If standalone Gemini package is not available, check Google Search App Gemini
-            if (!launched) {
+            // Strategy 4: If Gemini standalone is not available, check Google Search App Gemini
+            if (!launched && selectedModel == AiModelPreferenceManager.AiModel.GEMINI) {
                 val googleSendIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "image/png"
                     setDataAndType(contentUri, "image/png")
                     putExtra(Intent.EXTRA_STREAM, contentUri)
                     clipData = ClipData.newUri(contentResolver, "Gemini Screenshot", contentUri)
-                    setPackage(googleSearchPackage)
+                    setPackage("com.google.android.googlequicksearchbox")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 if (googleSendIntent.resolveActivity(packageManager) != null ||
@@ -444,24 +440,14 @@ class CropOverlayActivity : ComponentActivity() {
                 }
             }
 
-            // Strategy 5: If not installed, notify user and open Gemini web or Play Store
+            // Strategy 5: If not installed, notify user and open Play Store or web
             if (!launched) {
-                Toast.makeText(this, getString(R.string.toast_gemini_not_installed), Toast.LENGTH_LONG).show()
-                try {
-                    val playStoreIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$geminiPackage")).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(playStoreIntent)
-                } catch (e: Exception) {
-                    val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://gemini.google.com/")).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(webIntent)
-                }
+                Toast.makeText(this, "${selectedModel.displayName} app not found. Opening Store…", Toast.LENGTH_LONG).show()
+                AiModelPreferenceManager.openPlayStoreOrWeb(this, selectedModel)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to share image with Gemini app", e)
-            Toast.makeText(this, "Error opening Gemini app", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "Failed to share image with AI app", e)
+            Toast.makeText(this, "Error opening AI app", Toast.LENGTH_SHORT).show()
         } finally {
             finish()
         }
@@ -847,7 +833,7 @@ private fun CropOverlayContent(
         if (hasValidSelection && currentRect != null && ocrResultText == null) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val toolbarWidthPx = with(density) { 340.dp.toPx() }
+            val toolbarWidthPx = with(density) { 336.dp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
@@ -904,7 +890,7 @@ private fun CropOverlayContent(
                         }
                     }
 
-                    // Main Action Capsule Dock
+                    // Main Action Capsule Dock (Select Text, Ask AI, Copy, Share, Save)
                     Surface(
                         shape = RoundedCornerShape(percent = 50),
                         color = Color(0xF21E232B), // Dark capsule dock matching user reference
@@ -913,20 +899,23 @@ private fun CropOverlayContent(
                         border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
                         modifier = Modifier.testTag("floating_action_toolbar")
                     ) {
+                        val selectedAiModel = remember { AiModelPreferenceManager.getSelectedModel(context) }
+
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // 1. Reset / Retake Button
+                            // 1. Select Whole Screen Button
                             CropActionCircleButton(
                                 onClick = {
-                                    activeSelectionView?.resetSelection()
+                                    activeSelectionView?.selectAll()
                                 },
-                                contentDescription = stringResource(R.string.crop_btn_reset),
-                                testTag = "btn_reset_crop"
+                                contentDescription = stringResource(R.string.crop_btn_select_full_screen),
+                                testTag = "btn_select_full_screen_crop",
+                                backgroundColor = Color(0x3364748B)
                             ) {
-                                ResetCropIcon(tint = Color.White)
+                                SelectFullScreenIcon(tint = Color.White)
                             }
 
                             // 2. Select Text (OCR) Button
@@ -965,18 +954,26 @@ private fun CropOverlayContent(
                                 SelectTextIcon(tint = Color(0xFF00E5FF))
                             }
 
-                            // 3. Ask Gemini Button
+                            // 2. Ask AI Button (Gemini, ChatGPT, or Claude)
                             CropActionCircleButton(
                                 onClick = {
                                     onGeminiRequested(currentRect)
                                 },
-                                contentDescription = stringResource(R.string.crop_btn_gemini),
+                                contentDescription = when (selectedAiModel) {
+                                    AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
+                                    AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
+                                    else -> stringResource(R.string.crop_btn_gemini)
+                                },
                                 testTag = "btn_gemini_crop"
                             ) {
-                                GeminiSparkleIcon()
+                                when (selectedAiModel) {
+                                    AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon()
+                                    AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
+                                    else -> GeminiSparkleIcon()
+                                }
                             }
 
-                            // 4. Copy to Clipboard Button
+                            // 3. Copy to Clipboard Button
                             CropActionCircleButton(
                                 onClick = {
                                     onCopyRequested(currentRect)
@@ -1251,6 +1248,66 @@ private fun OcrResultSheet(
                 }
             }
         }
+    }
+}
+
+/**
+ * Custom vector canvas for Select Whole Screen icon:
+ * Four outward corner brackets with an inner display frame.
+ */
+@Composable
+private fun SelectFullScreenIcon(
+    modifier: Modifier = Modifier.size(20.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 1.8f * density
+        val w = size.width
+        val h = size.height
+        val bracketLen = w * 0.28f
+        val pad = w * 0.08f
+
+        // Top-left corner bracket
+        val tl = Path().apply {
+            moveTo(pad, pad + bracketLen)
+            lineTo(pad, pad)
+            lineTo(pad + bracketLen, pad)
+        }
+        drawPath(tl, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Top-right corner bracket
+        val tr = Path().apply {
+            moveTo(w - pad - bracketLen, pad)
+            lineTo(w - pad, pad)
+            lineTo(w - pad, pad + bracketLen)
+        }
+        drawPath(tr, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-left corner bracket
+        val bl = Path().apply {
+            moveTo(pad, h - pad - bracketLen)
+            lineTo(pad, h - pad)
+            lineTo(pad + bracketLen, h - pad)
+        }
+        drawPath(bl, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-right corner bracket
+        val br = Path().apply {
+            moveTo(w - pad - bracketLen, h - pad)
+            lineTo(w - pad, h - pad)
+            lineTo(w - pad, h - pad - bracketLen)
+        }
+        drawPath(br, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Inner solid rounded screen rectangle
+        val innerPad = w * 0.28f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(innerPad, innerPad),
+            size = Size(w - 2f * innerPad, h - 2f * innerPad),
+            cornerRadius = CornerRadius(2.5f * density, 2.5f * density),
+            style = Stroke(strokeW * 0.85f)
+        )
     }
 }
 

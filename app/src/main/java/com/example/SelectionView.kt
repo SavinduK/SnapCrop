@@ -131,6 +131,31 @@ open class SelectionView @JvmOverloads constructor(
     }
 
     /**
+     * Selects the entire screen area.
+     */
+    fun selectAll() {
+        val viewW = width.toFloat()
+        val viewH = height.toFloat()
+        if (viewW > 0f && viewH > 0f) {
+            selectionRect.set(0f, 0f, viewW, viewH)
+            hasSelection = true
+            invalidate()
+            onSelectionChanged?.invoke(RectF(selectionRect), false)
+        } else {
+            post {
+                val postW = width.toFloat()
+                val postH = height.toFloat()
+                if (postW > 0f && postH > 0f) {
+                    selectionRect.set(0f, 0f, postW, postH)
+                    hasSelection = true
+                    invalidate()
+                    onSelectionChanged?.invoke(RectF(selectionRect), false)
+                }
+            }
+        }
+    }
+
+    /**
      * Resets / clears current crop box, returning the view to initial state.
      */
     fun resetSelection() {

@@ -125,12 +125,22 @@ fun SnapCropMainScreen() {
     var isAccessibilityEnabled by remember { mutableStateOf(checkAccessibilityEnabled(context)) }
     var isBatteryIgnored by remember { mutableStateOf(checkBatteryIgnored(context)) }
 
+    var currentTriggerMode by remember {
+        mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
+    }
+
+    var currentAiModel by remember {
+        mutableStateOf(AiModelPreferenceManager.getSelectedModel(context))
+    }
+
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 isAccessibilityEnabled = checkAccessibilityEnabled(context)
                 isBatteryIgnored = checkBatteryIgnored(context)
+                currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
+                currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -143,10 +153,6 @@ fun SnapCropMainScreen() {
     }
 
     val isAllReady = isAccessibilityEnabled
-
-    var currentTriggerMode by remember {
-        mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
-    }
 
     Scaffold(
         modifier = Modifier
@@ -207,6 +213,53 @@ fun SnapCropMainScreen() {
                 testTag = "trigger_card_power"
             )
 
+            // Section: AI Model to Share (Gemini default, ChatGPT & Claude)
+            Text(
+                text = stringResource(R.string.section_ai_model),
+                color = TextPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+            )
+
+            AiModelOptionCard(
+                model = AiModelPreferenceManager.AiModel.GEMINI,
+                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GEMINI,
+                isInstalled = true,
+                isDefault = true,
+                onSelect = {
+                    currentAiModel = AiModelPreferenceManager.AiModel.GEMINI
+                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GEMINI)
+                },
+                testTag = "ai_card_gemini"
+            )
+
+            val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
+            AiModelOptionCard(
+                model = AiModelPreferenceManager.AiModel.CHATGPT,
+                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CHATGPT,
+                isInstalled = isChatGptInstalled,
+                isDefault = false,
+                onSelect = {
+                    currentAiModel = AiModelPreferenceManager.AiModel.CHATGPT
+                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CHATGPT)
+                },
+                testTag = "ai_card_chatgpt"
+            )
+
+            val isClaudeInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CLAUDE)
+            AiModelOptionCard(
+                model = AiModelPreferenceManager.AiModel.CLAUDE,
+                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CLAUDE,
+                isInstalled = isClaudeInstalled,
+                isDefault = false,
+                onSelect = {
+                    currentAiModel = AiModelPreferenceManager.AiModel.CLAUDE
+                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CLAUDE)
+                },
+                testTag = "ai_card_claude"
+            )
+
             // Section: What You Can Do (Gemini AI, Share with preview, Copy & Save)
             Text(
                 text = stringResource(R.string.section_what_you_can_do),
@@ -243,19 +296,6 @@ fun SnapCropMainScreen() {
                 actionLabel = stringResource(R.string.btn_battery_optimization),
                 testTag = "btn_battery",
                 onClick = { requestIgnoreBatteryOptimization(context) }
-            )
-
-            // Interactive Playground: Try Cropping Now
-            InteractiveTestBanner(
-                onTestClick = {
-                    val triggered = KeyCaptureService.triggerScreenshot(context)
-                    if (!triggered) {
-                        val intent = Intent(context, CropOverlayActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                        context.startActivity(intent)
-                    }
-                }
             )
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -614,24 +654,13 @@ private fun PermissionRowItem(
                     color = MintActive.copy(alpha = 0.15f),
                     border = BorderStroke(1.dp, MintActive.copy(alpha = 0.35f))
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = MintActive,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = stringResource(R.string.status_enabled),
-                            color = MintActive,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.status_enabled),
+                        color = MintActive,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
                 }
             } else {
                 Button(
@@ -655,80 +684,119 @@ private fun PermissionRowItem(
 }
 
 @Composable
-private fun InteractiveTestBanner(onTestClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = SlateSurfaceCard),
+private fun AiModelOptionCard(
+    model: AiModelPreferenceManager.AiModel,
+    isSelected: Boolean,
+    isInstalled: Boolean,
+    isDefault: Boolean = false,
+    onSelect: () -> Unit,
+    testTag: String
+) {
+    val modelColor = when (model) {
+        AiModelPreferenceManager.AiModel.GEMINI -> Color(0xFFC084FC)
+        AiModelPreferenceManager.AiModel.CHATGPT -> Color(0xFF10A37F)
+        AiModelPreferenceManager.AiModel.CLAUDE -> Color(0xFFD97706)
+    }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+            .clickable(onClick = onSelect),
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) SlateSurfaceCard else SlateSurface,
         border = BorderStroke(
-            1.dp,
-            Brush.horizontalGradient(listOf(CyanPrimary.copy(alpha = 0.5f), ElectricBlue.copy(alpha = 0.5f)))
+            1.5.dp,
+            if (isSelected) modelColor.copy(alpha = 0.8f) else SlateBorder
         )
     ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(modelColor.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            Brush.linearGradient(listOf(CyanPrimary, ElectricBlue))
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Crop,
-                        contentDescription = null,
-                        tint = SlateDarkBg,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        text = "Interactive Test",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Experience the crop overlay & AI actions now",
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
+                when (model) {
+                    AiModelPreferenceManager.AiModel.GEMINI -> {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = modelColor,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    AiModelPreferenceManager.AiModel.CHATGPT -> {
+                        ChatGptIcon(tint = modelColor, modifier = Modifier.size(24.dp))
+                    }
+                    AiModelPreferenceManager.AiModel.CLAUDE -> {
+                        ClaudeIcon(tint = modelColor, modifier = Modifier.size(24.dp))
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-            Button(
-                onClick = onTestClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("btn_test_capture"),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = CyanPrimary,
-                    contentColor = SlateDarkBg
-                )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = model.displayName,
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Status Badge
+                    val (badgeText, badgeBg, badgeTextColor) = when {
+                        isDefault -> Triple("Default", CyanPrimary.copy(alpha = 0.15f), CyanPrimary)
+                        isInstalled -> Triple("Installed", MintActive.copy(alpha = 0.15f), MintActive)
+                        else -> Triple("Not Installed", SlateBorder.copy(alpha = 0.4f), TextSecondary)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = badgeBg
+                    ) {
+                        Text(
+                            text = badgeText,
+                            color = badgeTextColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
                 Text(
-                    text = stringResource(R.string.btn_test_capture),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp
+                    text = model.description,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
                 )
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            RadioButton(
+                selected = isSelected,
+                onClick = onSelect,
+                colors = RadioButtonDefaults.colors(
+                    selectedColor = modelColor,
+                    unselectedColor = TextSecondary.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.testTag("${testTag}_radio")
+            )
         }
     }
 }

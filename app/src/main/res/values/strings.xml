@@ -40,7 +40,18 @@
     <string name="step_battery_desc">Allows SnapCrop to stay responsive even when your phone is asleep.</string>
     <string name="btn_battery_optimization">Allow Background Use</string>
     
-    <string name="btn_test_capture">Try Cropping Now</string>
+    <!-- AI Model Section -->
+    <string name="section_ai_model">AI Model to Share</string>
+    <string name="ai_model_gemini_title">Google Gemini</string>
+    <string name="ai_model_gemini_desc">Default • Analyze screenshots with Gemini</string>
+    <string name="ai_model_chatgpt_title">ChatGPT</string>
+    <string name="ai_model_chatgpt_desc">Share screenshots directly to ChatGPT</string>
+    <string name="ai_model_claude_title">Claude</string>
+    <string name="ai_model_claude_desc">Share screenshots directly to Claude</string>
+    <string name="status_installed">Installed</string>
+    <string name="status_not_installed">Not Installed</string>
+    <string name="status_default">Default</string>
+    
     <string name="status_enabled">Active</string>
     <string name="status_disabled">Not Enabled</string>
     <string name="status_unrestricted">Allowed</string>
@@ -48,6 +59,7 @@
     
     <!-- Crop Screen Strings -->
     <string name="crop_instruction_hint">Drag across the screen to select a region</string>
+    <string name="crop_btn_select_full_screen">Select Whole Screen</string>
     <string name="crop_btn_select_text">Select Text</string>
     <string name="crop_btn_gemini">Ask Gemini</string>
     <string name="crop_btn_share">Share</string>
