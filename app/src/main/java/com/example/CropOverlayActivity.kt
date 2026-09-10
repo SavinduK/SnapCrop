@@ -62,10 +62,13 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,8 +80,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -179,6 +184,18 @@ class CropOverlayActivity : ComponentActivity() {
                     },
                     onSaveRequested = { rect ->
                         handleCropAndSaveToGallery(rect)
+                    },
+                    onAddToBatchRequested = { rect ->
+                        handleAddToBatch(rect)
+                    },
+                    onShareBatchRequested = { rect ->
+                        handleShareBatch(rect)
+                    },
+                    onSaveBatchRequested = { rect ->
+                        handleSaveBatchToGallery(rect)
+                    },
+                    onClearBatchRequested = {
+                        handleClearBatch()
                     },
                     onCancelRequested = {
                         finish()
@@ -690,6 +707,77 @@ class CropOverlayActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Stores the current cropped selection into app temporary storage (batch).
+     */
+    private fun handleAddToBatch(rect: RectF) {
+        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+            Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val file = BatchCropManager.addCroppedBitmapToBatch(this, croppedBitmap)
+        croppedBitmap.recycle()
+        if (file != null) {
+            val count = BatchCropManager.getBatchCount(this)
+            Toast.makeText(this, getString(R.string.crop_batch_added_toast, count), Toast.LENGTH_SHORT).show()
+            selectionViewRef?.resetSelection()
+        } else {
+            Toast.makeText(this, "Failed to store image in batch", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Shares all batch images (and current selection if provided) via ACTION_SEND_MULTIPLE.
+     */
+    private fun handleShareBatch(rect: RectF?) {
+        val additionalBitmap = rect?.let { extractCroppedBitmap(it) }
+        val chooserIntent = BatchCropManager.createShareBatchChooserIntent(this, additionalBitmap)
+        additionalBitmap?.recycle()
+
+        if (chooserIntent != null) {
+            try {
+                startActivity(chooserIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to share batch", e)
+                Toast.makeText(this, "Error sharing batch screenshots", Toast.LENGTH_SHORT).show()
+            } finally {
+                finish()
+            }
+        } else {
+            Toast.makeText(this, "No images in batch to share", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Saves all batch images (and current selection if provided) to device Gallery.
+     */
+    private fun handleSaveBatchToGallery(rect: RectF?) {
+        val additionalBitmap = rect?.let { extractCroppedBitmap(it) }
+        try {
+            val savedCount = BatchCropManager.saveBatchToGallery(this, additionalBitmap)
+            if (savedCount > 0) {
+                Toast.makeText(this, getString(R.string.crop_batch_saved_gallery_toast, savedCount), Toast.LENGTH_SHORT).show()
+                BatchCropManager.clearBatch(this)
+            } else {
+                Toast.makeText(this, "Failed to save batch to Gallery", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save batch to Gallery", e)
+            Toast.makeText(this, "Error saving batch to Gallery", Toast.LENGTH_SHORT).show()
+        } finally {
+            additionalBitmap?.recycle()
+            finish()
+        }
+    }
+
+    /**
+     * Clears all temporary images in batch storage.
+     */
+    private fun handleClearBatch() {
+        BatchCropManager.clearBatch(this)
+        Toast.makeText(this, getString(R.string.crop_batch_cleared_toast), Toast.LENGTH_SHORT).show()
+    }
+
     override fun onDestroy() {
         ScreenshotHolder.clear()
         loadedBitmap?.let {
@@ -727,6 +815,10 @@ private fun CropOverlayContent(
     onShareRequested: (RectF) -> Unit,
     onCopyRequested: (RectF) -> Unit,
     onSaveRequested: (RectF) -> Unit,
+    onAddToBatchRequested: (RectF) -> Unit,
+    onShareBatchRequested: (RectF?) -> Unit,
+    onSaveBatchRequested: (RectF?) -> Unit,
+    onClearBatchRequested: () -> Unit,
     onCancelRequested: () -> Unit,
     onSearchGoogle: (String) -> Unit,
     onCopyText: (String) -> Unit,
@@ -736,6 +828,12 @@ private fun CropOverlayContent(
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
     var isInteracting by remember { mutableStateOf(false) }
     var activeSelectionView by remember { mutableStateOf<SelectionView?>(null) }
+
+    // Batch State
+    var batchCount by remember { mutableIntStateOf(BatchCropManager.getBatchCount(context)) }
+    var isBatchMenuExpanded by remember { mutableStateOf(false) }
+    var showShareBatchDialog by remember { mutableStateOf(false) }
+    var showSaveBatchDialog by remember { mutableStateOf(false) }
 
     // OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
@@ -766,74 +864,204 @@ private fun CropOverlayContent(
             modifier = Modifier.fillMaxSize()
         )
 
-        // 2. Top-Bar Utility Header: Cancel Button & Guidance Chip
+        val currentRect = selectionRect
+        val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
+
+        // 2. Top-Bar Utility Header: Cancel Button & Collapsible Batch Toggle
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(top = 16.dp, start = 16.dp, end = 16.dp)
         ) {
-            // Contextual Guidance Chip
-            val hintText = if (selectionRect == null) {
-                stringResource(R.string.crop_hint_initial)
-            } else {
-                stringResource(R.string.crop_hint_selected)
-            }
-
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xD90F172A),
-                border = BorderStroke(1.dp, Color(0x6000E5FF)),
-                modifier = Modifier.align(Alignment.TopCenter)
+            // Top Actions Row: Collapsible Batch Toggle Button (left to close button) & Cancel/Close (✕) Button
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .testTag("top_end_actions_row"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Collapsible Batch Button left to the top close button
+                if (batchCount > 0) {
+                    Surface(
+                        onClick = { isBatchMenuExpanded = !isBatchMenuExpanded },
+                        shape = RoundedCornerShape(percent = 50),
+                        color = if (isBatchMenuExpanded) Color(0xFFF59E0B) else Color(0xD918202F),
+                        border = BorderStroke(
+                            1.2.dp,
+                            if (isBatchMenuExpanded) Color(0xFFFDE68A) else Color(0x80F59E0B)
+                        ),
+                        tonalElevation = 4.dp,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .height(40.dp)
+                            .testTag("btn_toggle_batch_menu")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            BatchStackIcon(
+                                tint = if (isBatchMenuExpanded) Color(0xFF0F172A) else Color(0xFFFBBF24),
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Text(
+                                text = "$batchCount",
+                                color = if (isBatchMenuExpanded) Color(0xFF0F172A) else Color(0xFFFDE68A),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Cancel / Close (✕) Button
+                IconButton(
+                    onClick = onCancelRequested,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD90F172A))
+                        .testTag("btn_cancel_overlay")
                 ) {
                     Icon(
-                        imageVector = if (selectionRect == null) Icons.Default.CropFree else Icons.Default.OpenWith,
-                        contentDescription = null,
-                        tint = Color(0xFF00E5FF),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = hintText,
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.crop_btn_close),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
+        }
 
-            // Cancel / Close (✕) Button
-            IconButton(
-                onClick = onCancelRequested,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xD90F172A))
-                    .testTag("btn_cancel_overlay")
+        // 2b. Batch Status & Actions Bar (collapsible, hidden when overlay triggered, opened on toggle click)
+        AnimatedVisibility(
+            visible = isBatchMenuExpanded && batchCount > 0 && ocrResultText == null,
+            enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -it }),
+            exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it }),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 64.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(percent = 50),
+                color = Color(0xF218202F),
+                border = BorderStroke(1.2.dp, Color(0x66F59E0B)),
+                tonalElevation = 6.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier.testTag("batch_crop_banner")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.crop_btn_close),
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+                Row(
+                    modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BatchStackIcon(tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
+
+                    val bannerTitle = if (hasValidSelection) {
+                        stringResource(R.string.crop_batch_banner_title_with_new, batchCount)
+                    } else {
+                        stringResource(R.string.crop_batch_banner_title, batchCount)
+                    }
+                    Text(
+                        text = bannerTitle,
+                        color = Color(0xFFFDE68A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.width(2.dp))
+
+                    // Action: Share Batch (icon only)
+                    IconButton(
+                        onClick = {
+                            onShareBatchRequested(if (hasValidSelection) currentRect else null)
+                        },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x3300E5FF))
+                            .testTag("btn_share_batch")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = stringResource(R.string.crop_batch_share),
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // Action: Save Batch to Gallery (icon only)
+                    IconButton(
+                        onClick = {
+                            onSaveBatchRequested(if (hasValidSelection) currentRect else null)
+                        },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x3310B981))
+                            .testTag("btn_save_batch")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Download,
+                            contentDescription = stringResource(R.string.crop_batch_save),
+                            tint = Color(0xFF34D399),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // Action: Clear Batch
+                    IconButton(
+                        onClick = {
+                            onClearBatchRequested()
+                            batchCount = 0
+                            isBatchMenuExpanded = false
+                        },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22EF4444))
+                            .testTag("btn_clear_batch")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = stringResource(R.string.crop_batch_clear),
+                            tint = Color(0xFFF87171),
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    // Action: Collapse Tab
+                    IconButton(
+                        onClick = {
+                            isBatchMenuExpanded = false
+                        },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x22FFFFFF))
+                            .testTag("btn_collapse_batch_menu")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.crop_btn_close),
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
             }
         }
 
-        // 3. Floating Action Dock (Reset, Select Text, Gemini, Copy, Share, Save)
+        // 3. Floating Action Dock (Select Whole Screen, Select Text, Gemini, Add to Batch, Copy, Share, Save)
         // Positioned contextually below (or above) the bounding box
-        val currentRect = selectionRect
-        val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
-
         if (hasValidSelection && currentRect != null && ocrResultText == null) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val toolbarWidthPx = with(density) { 336.dp.toPx() }
+            val toolbarWidthPx = with(density) { 360.dp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
@@ -890,10 +1118,10 @@ private fun CropOverlayContent(
                         }
                     }
 
-                    // Main Action Capsule Dock (Select Text, Ask AI, Copy, Share, Save)
+                    // Main Action Capsule Dock
                     Surface(
                         shape = RoundedCornerShape(percent = 50),
-                        color = Color(0xF21E232B), // Dark capsule dock matching user reference
+                        color = Color(0xF21E232B), // Dark capsule dock
                         tonalElevation = 6.dp,
                         shadowElevation = 12.dp,
                         border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
@@ -904,7 +1132,7 @@ private fun CropOverlayContent(
                         Row(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             // 1. Select Whole Screen Button
                             CropActionCircleButton(
@@ -954,7 +1182,7 @@ private fun CropOverlayContent(
                                 SelectTextIcon(tint = Color(0xFF00E5FF))
                             }
 
-                            // 2. Ask AI Button (Gemini, ChatGPT, or Claude)
+                            // 3. Ask AI Button (Gemini, ChatGPT, or Claude)
                             CropActionCircleButton(
                                 onClick = {
                                     onGeminiRequested(currentRect)
@@ -973,7 +1201,20 @@ private fun CropOverlayContent(
                                 }
                             }
 
-                            // 3. Copy to Clipboard Button
+                            // 4. Add to Batch (Temporary Storage) Button
+                            CropActionCircleButton(
+                                onClick = {
+                                    onAddToBatchRequested(currentRect)
+                                    batchCount = BatchCropManager.getBatchCount(context)
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_add_to_batch),
+                                testTag = "btn_add_to_batch_crop",
+                                backgroundColor = Color(0x33F59E0B)
+                            ) {
+                                AddToBatchIcon(tint = Color(0xFFFBBF24))
+                            }
+
+                            // 5. Copy to Clipboard Button
                             CropActionCircleButton(
                                 onClick = {
                                     onCopyRequested(currentRect)
@@ -984,10 +1225,14 @@ private fun CropOverlayContent(
                                 CopyIcon(tint = Color.White)
                             }
 
-                            // 5. Share Button
+                            // 6. Share Button
                             CropActionCircleButton(
                                 onClick = {
-                                    onShareRequested(currentRect)
+                                    if (batchCount > 0) {
+                                        showShareBatchDialog = true
+                                    } else {
+                                        onShareRequested(currentRect)
+                                    }
                                 },
                                 contentDescription = stringResource(R.string.crop_btn_share),
                                 testTag = "btn_share_crop"
@@ -995,10 +1240,14 @@ private fun CropOverlayContent(
                                 ShareNodesIcon(tint = Color.White)
                             }
 
-                            // 6. Save to Gallery Button
+                            // 7. Save to Gallery Button
                             CropActionCircleButton(
                                 onClick = {
-                                    onSaveRequested(currentRect)
+                                    if (batchCount > 0) {
+                                        showSaveBatchDialog = true
+                                    } else {
+                                        onSaveRequested(currentRect)
+                                    }
                                 },
                                 contentDescription = stringResource(R.string.crop_btn_save),
                                 testTag = "btn_save_crop"
@@ -1009,6 +1258,124 @@ private fun CropOverlayContent(
                     }
                 }
             }
+        }
+
+        // 3b. Batch Share Dialog
+        if (showShareBatchDialog && currentRect != null) {
+            AlertDialog(
+                onDismissRequest = { showShareBatchDialog = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.crop_batch_dialog_share_title),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                showShareBatchDialog = false
+                                onShareBatchRequested(currentRect)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.crop_batch_opt_all_share, batchCount + 1),
+                                color = Color(0xFF0F172A),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                showShareBatchDialog = false
+                                onShareRequested(currentRect)
+                            },
+                            border = BorderStroke(1.dp, Color(0x66FFFFFF)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.crop_batch_opt_single_share),
+                                color = Color.White
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showShareBatchDialog = false }) {
+                        Text("Cancel", color = Color(0xFF94A3B8))
+                    }
+                },
+                containerColor = Color(0xFF1E232B),
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
+
+        // 3c. Batch Save Dialog
+        if (showSaveBatchDialog && currentRect != null) {
+            AlertDialog(
+                onDismissRequest = { showSaveBatchDialog = false },
+                title = {
+                    Text(
+                        text = stringResource(R.string.crop_batch_dialog_save_title),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                showSaveBatchDialog = false
+                                onSaveBatchRequested(currentRect)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.crop_batch_opt_all_save, batchCount + 1),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                showSaveBatchDialog = false
+                                onSaveRequested(currentRect)
+                            },
+                            border = BorderStroke(1.dp, Color(0x66FFFFFF)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = stringResource(R.string.crop_batch_opt_single_save),
+                                color = Color.White
+                            )
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showSaveBatchDialog = false }) {
+                        Text("Cancel", color = Color(0xFF94A3B8))
+                    }
+                },
+                containerColor = Color(0xFF1E232B),
+                shape = RoundedCornerShape(20.dp)
+            )
         }
 
         // 4. OCR Result Bottom Sheet Modal
@@ -1455,7 +1822,7 @@ private fun CropActionCircleButton(
 ) {
     Box(
         modifier = modifier
-            .size(46.dp)
+            .size(42.dp)
             .clip(CircleShape)
             .background(backgroundColor)
             .clickable(onClick = onClick)
@@ -1647,6 +2014,111 @@ private fun ResetCropIcon(
             path = arrowHead,
             color = tint,
             style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+/**
+ * Custom vector canvas for Add to Batch icon:
+ * Two overlapping rounded rectangular cards with a clean '+' sign on the foreground card.
+ */
+@Composable
+private fun AddToBatchIcon(
+    modifier: Modifier = Modifier.size(20.dp),
+    tint: Color = Color.White
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 1.6f * density
+        val w = size.width
+        val h = size.height
+
+        // Background card outline (offset top-right)
+        val bgLeft = w * 0.22f
+        val bgTop = h * 0.08f
+        val bgRight = w * 0.92f
+        val bgBottom = h * 0.72f
+        drawRoundRect(
+            color = tint.copy(alpha = 0.5f),
+            topLeft = Offset(bgLeft, bgTop),
+            size = Size(bgRight - bgLeft, bgBottom - bgTop),
+            cornerRadius = CornerRadius(2.5f * density, 2.5f * density),
+            style = Stroke(strokeW * 0.85f)
+        )
+
+        // Foreground card outline (offset bottom-left)
+        val fgLeft = w * 0.08f
+        val fgTop = h * 0.24f
+        val fgRight = w * 0.78f
+        val fgBottom = h * 0.88f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(fgLeft, fgTop),
+            size = Size(fgRight - fgLeft, fgBottom - fgTop),
+            cornerRadius = CornerRadius(2.5f * density, 2.5f * density),
+            style = Stroke(strokeW)
+        )
+
+        // Centered '+' mark on the foreground card
+        val centerX = (fgLeft + fgRight) / 2f
+        val centerY = (fgTop + fgBottom) / 2f
+        val plusArm = w * 0.14f
+
+        drawLine(
+            color = tint,
+            start = Offset(centerX - plusArm, centerY),
+            end = Offset(centerX + plusArm, centerY),
+            strokeWidth = strokeW * 1.1f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(centerX, centerY - plusArm),
+            end = Offset(centerX, centerY + plusArm),
+            strokeWidth = strokeW * 1.1f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
+ * Custom vector canvas for Batch Stack Icon:
+ * Three tiered layered cards with soft alpha gradient.
+ */
+@Composable
+private fun BatchStackIcon(
+    modifier: Modifier = Modifier.size(18.dp),
+    tint: Color = Color(0xFFFBBF24)
+) {
+    ComposeCanvas(modifier = modifier) {
+        val strokeW = 1.5f * density
+        val w = size.width
+        val h = size.height
+
+        // Tier 1 (Back)
+        drawRoundRect(
+            color = tint.copy(alpha = 0.35f),
+            topLeft = Offset(w * 0.28f, h * 0.08f),
+            size = Size(w * 0.64f, h * 0.54f),
+            cornerRadius = CornerRadius(2f * density, 2f * density),
+            style = Stroke(strokeW * 0.8f)
+        )
+
+        // Tier 2 (Middle)
+        drawRoundRect(
+            color = tint.copy(alpha = 0.65f),
+            topLeft = Offset(w * 0.16f, h * 0.22f),
+            size = Size(w * 0.64f, h * 0.54f),
+            cornerRadius = CornerRadius(2f * density, 2f * density),
+            style = Stroke(strokeW * 0.9f)
+        )
+
+        // Tier 3 (Front)
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.06f, h * 0.36f),
+            size = Size(w * 0.64f, h * 0.54f),
+            cornerRadius = CornerRadius(2f * density, 2f * density),
+            style = Stroke(strokeW)
         )
     }
 }
