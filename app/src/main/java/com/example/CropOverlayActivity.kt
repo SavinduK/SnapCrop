@@ -835,6 +835,10 @@ private fun CropOverlayContent(
     var showShareBatchDialog by remember { mutableStateOf(false) }
     var showSaveBatchDialog by remember { mutableStateOf(false) }
 
+    // Feature Toggles from preferences
+    val isShareToAiEnabled = remember { CropFeaturePreferenceManager.isShareToAiEnabled(context) }
+    val isBatchModeEnabled = remember { CropFeaturePreferenceManager.isBatchSelectEnabled(context) }
+
     // OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
     var ocrResultText by remember { mutableStateOf<String?>(null) }
@@ -883,7 +887,7 @@ private fun CropOverlayContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Collapsible Batch Button left to the top close button
-                if (batchCount > 0) {
+                if (isBatchModeEnabled && batchCount > 0) {
                     Surface(
                         onClick = { isBatchMenuExpanded = !isBatchMenuExpanded },
                         shape = RoundedCornerShape(percent = 50),
@@ -938,7 +942,7 @@ private fun CropOverlayContent(
 
         // 2b. Batch Status & Actions Bar (collapsible, hidden when overlay triggered, opened on toggle click)
         AnimatedVisibility(
-            visible = isBatchMenuExpanded && batchCount > 0 && ocrResultText == null,
+            visible = isBatchModeEnabled && isBatchMenuExpanded && batchCount > 0 && ocrResultText == null,
             enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -it }),
             exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it }),
             modifier = Modifier
@@ -975,45 +979,41 @@ private fun CropOverlayContent(
 
                     Spacer(modifier = Modifier.width(2.dp))
 
-                    // Action: Share Batch (icon only)
+                    // Action: Share Batch (icon only, clean without circular blur)
                     IconButton(
                         onClick = {
                             onShareBatchRequested(if (hasValidSelection) currentRect else null)
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x3300E5FF))
                             .testTag("btn_share_batch")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
                             contentDescription = stringResource(R.string.crop_batch_share),
                             tint = Color(0xFF00E5FF),
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
 
-                    // Action: Save Batch to Gallery (icon only)
+                    // Action: Save Batch to Gallery (icon only, clean without circular blur)
                     IconButton(
                         onClick = {
                             onSaveBatchRequested(if (hasValidSelection) currentRect else null)
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x3310B981))
                             .testTag("btn_save_batch")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
                             contentDescription = stringResource(R.string.crop_batch_save),
                             tint = Color(0xFF34D399),
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
 
-                    // Action: Clear Batch
+                    // Action: Clear Batch (clean without circular blur)
                     IconButton(
                         onClick = {
                             onClearBatchRequested()
@@ -1022,46 +1022,44 @@ private fun CropOverlayContent(
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22EF4444))
                             .testTag("btn_clear_batch")
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
                             contentDescription = stringResource(R.string.crop_batch_clear),
                             tint = Color(0xFFF87171),
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
 
-                    // Action: Collapse Tab
+                    // Action: Collapse Tab (clean without circular blur)
                     IconButton(
                         onClick = {
                             isBatchMenuExpanded = false
                         },
                         modifier = Modifier
                             .size(28.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x22FFFFFF))
                             .testTag("btn_collapse_batch_menu")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = stringResource(R.string.crop_btn_close),
                             tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(15.dp)
                         )
                     }
                 }
             }
         }
 
-        // 3. Floating Action Dock (Select Whole Screen, Select Text, Gemini, Add to Batch, Copy, Share, Save)
+        // 3. Floating Action Dock (Select Text, Gemini/AI, Add to Batch, Copy, Share, Save)
         // Positioned contextually below (or above) the bounding box
         if (hasValidSelection && currentRect != null && ocrResultText == null) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val toolbarWidthPx = with(density) { 360.dp.toPx() }
+            val activeButtonsCount = 3 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
+            val estimatedToolbarWidthDp = 16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1))
+            val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
@@ -1134,19 +1132,7 @@ private fun CropOverlayContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // 1. Select Whole Screen Button
-                            CropActionCircleButton(
-                                onClick = {
-                                    activeSelectionView?.selectAll()
-                                },
-                                contentDescription = stringResource(R.string.crop_btn_select_full_screen),
-                                testTag = "btn_select_full_screen_crop",
-                                backgroundColor = Color(0x3364748B)
-                            ) {
-                                SelectFullScreenIcon(tint = Color.White)
-                            }
-
-                            // 2. Select Text (OCR) Button
+                            // 1. Select Text (OCR) Button
                             CropActionCircleButton(
                                 onClick = {
                                     isOcrProcessing = true
@@ -1182,39 +1168,43 @@ private fun CropOverlayContent(
                                 SelectTextIcon(tint = Color(0xFF00E5FF))
                             }
 
-                            // 3. Ask AI Button (Gemini, ChatGPT, or Claude)
-                            CropActionCircleButton(
-                                onClick = {
-                                    onGeminiRequested(currentRect)
-                                },
-                                contentDescription = when (selectedAiModel) {
-                                    AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
-                                    AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
-                                    else -> stringResource(R.string.crop_btn_gemini)
-                                },
-                                testTag = "btn_gemini_crop"
-                            ) {
-                                when (selectedAiModel) {
-                                    AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon()
-                                    AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
-                                    else -> GeminiSparkleIcon()
+                            // 2. Ask AI Button (Gemini, ChatGPT, or Claude) - conditional on Share to AI toggle
+                            if (isShareToAiEnabled) {
+                                CropActionCircleButton(
+                                    onClick = {
+                                        onGeminiRequested(currentRect)
+                                    },
+                                    contentDescription = when (selectedAiModel) {
+                                        AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
+                                        AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
+                                        else -> stringResource(R.string.crop_btn_gemini)
+                                    },
+                                    testTag = "btn_gemini_crop"
+                                ) {
+                                    when (selectedAiModel) {
+                                        AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon()
+                                        AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
+                                        else -> GeminiSparkleIcon()
+                                    }
                                 }
                             }
 
-                            // 4. Add to Batch (Temporary Storage) Button
-                            CropActionCircleButton(
-                                onClick = {
-                                    onAddToBatchRequested(currentRect)
-                                    batchCount = BatchCropManager.getBatchCount(context)
-                                },
-                                contentDescription = stringResource(R.string.crop_btn_add_to_batch),
-                                testTag = "btn_add_to_batch_crop",
-                                backgroundColor = Color(0x33F59E0B)
-                            ) {
-                                AddToBatchIcon(tint = Color(0xFFFBBF24))
+                            // 3. Add to Batch (Temporary Storage) Button - conditional on Batch Select toggle
+                            if (isBatchModeEnabled) {
+                                CropActionCircleButton(
+                                    onClick = {
+                                        onAddToBatchRequested(currentRect)
+                                        batchCount = BatchCropManager.getBatchCount(context)
+                                    },
+                                    contentDescription = stringResource(R.string.crop_btn_add_to_batch),
+                                    testTag = "btn_add_to_batch_crop",
+                                    backgroundColor = Color(0x33F59E0B)
+                                ) {
+                                    AddToBatchIcon(tint = Color(0xFFFBBF24))
+                                }
                             }
 
-                            // 5. Copy to Clipboard Button
+                            // 4. Copy to Clipboard Button
                             CropActionCircleButton(
                                 onClick = {
                                     onCopyRequested(currentRect)
@@ -1225,10 +1215,10 @@ private fun CropOverlayContent(
                                 CopyIcon(tint = Color.White)
                             }
 
-                            // 6. Share Button
+                            // 5. Share Button
                             CropActionCircleButton(
                                 onClick = {
-                                    if (batchCount > 0) {
+                                    if (isBatchModeEnabled && batchCount > 0) {
                                         showShareBatchDialog = true
                                     } else {
                                         onShareRequested(currentRect)
@@ -1240,10 +1230,10 @@ private fun CropOverlayContent(
                                 ShareNodesIcon(tint = Color.White)
                             }
 
-                            // 7. Save to Gallery Button
+                            // 6. Save to Gallery Button
                             CropActionCircleButton(
                                 onClick = {
-                                    if (batchCount > 0) {
+                                    if (isBatchModeEnabled && batchCount > 0) {
                                         showSaveBatchDialog = true
                                     } else {
                                         onSaveRequested(currentRect)
@@ -1615,66 +1605,6 @@ private fun OcrResultSheet(
                 }
             }
         }
-    }
-}
-
-/**
- * Custom vector canvas for Select Whole Screen icon:
- * Four outward corner brackets with an inner display frame.
- */
-@Composable
-private fun SelectFullScreenIcon(
-    modifier: Modifier = Modifier.size(20.dp),
-    tint: Color = Color.White
-) {
-    ComposeCanvas(modifier = modifier) {
-        val strokeW = 1.8f * density
-        val w = size.width
-        val h = size.height
-        val bracketLen = w * 0.28f
-        val pad = w * 0.08f
-
-        // Top-left corner bracket
-        val tl = Path().apply {
-            moveTo(pad, pad + bracketLen)
-            lineTo(pad, pad)
-            lineTo(pad + bracketLen, pad)
-        }
-        drawPath(tl, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        // Top-right corner bracket
-        val tr = Path().apply {
-            moveTo(w - pad - bracketLen, pad)
-            lineTo(w - pad, pad)
-            lineTo(w - pad, pad + bracketLen)
-        }
-        drawPath(tr, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        // Bottom-left corner bracket
-        val bl = Path().apply {
-            moveTo(pad, h - pad - bracketLen)
-            lineTo(pad, h - pad)
-            lineTo(pad + bracketLen, h - pad)
-        }
-        drawPath(bl, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        // Bottom-right corner bracket
-        val br = Path().apply {
-            moveTo(w - pad - bracketLen, h - pad)
-            lineTo(w - pad, h - pad)
-            lineTo(w - pad, h - pad - bracketLen)
-        }
-        drawPath(br, tint, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        // Inner solid rounded screen rectangle
-        val innerPad = w * 0.28f
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(innerPad, innerPad),
-            size = Size(w - 2f * innerPad, h - 2f * innerPad),
-            cornerRadius = CornerRadius(2.5f * density, 2.5f * density),
-            style = Stroke(strokeW * 0.85f)
-        )
     }
 }
 
@@ -2085,7 +2015,7 @@ private fun AddToBatchIcon(
  * Three tiered layered cards with soft alpha gradient.
  */
 @Composable
-private fun BatchStackIcon(
+internal fun BatchStackIcon(
     modifier: Modifier = Modifier.size(18.dp),
     tint: Color = Color(0xFFFBBF24)
 ) {

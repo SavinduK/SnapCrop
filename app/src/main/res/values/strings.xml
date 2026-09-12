@@ -98,5 +98,12 @@
     <string name="crop_hint_initial">Drag anywhere to select area</string>
     <string name="crop_hint_selected">Drag edges to adjust • Drag inside to move</string>
     <string name="share_cropped_title">Cropped Screenshot</string>
+    
+    <!-- Crop Modes & Toggles -->
+    <string name="section_crop_features">Crop Modes &amp; Actions</string>
+    <string name="feature_share_ai_title">Share to AI</string>
+    <string name="feature_share_ai_desc">Show Ask AI action in crop dock to send image to Gemini, ChatGPT, or Claude</string>
+    <string name="feature_batch_select_title">Batch Select Mode</string>
+    <string name="feature_batch_select_desc">Collect multiple crops into temporary batch to share or save all at once</string>
 </resources>
 

@@ -63,6 +63,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -133,6 +135,14 @@ fun SnapCropMainScreen() {
         mutableStateOf(AiModelPreferenceManager.getSelectedModel(context))
     }
 
+    var isShareToAiEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isShareToAiEnabled(context))
+    }
+
+    var isBatchSelectEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isBatchSelectEnabled(context))
+    }
+
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -141,6 +151,8 @@ fun SnapCropMainScreen() {
                 isBatteryIgnored = checkBatteryIgnored(context)
                 currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
                 currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
+                isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
+                isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -213,52 +225,95 @@ fun SnapCropMainScreen() {
                 testTag = "trigger_card_power"
             )
 
-            // Section: AI Model to Share (Gemini default, ChatGPT & Claude)
+            // Section: Crop Modes & Actions (Feature Toggles)
             Text(
-                text = stringResource(R.string.section_ai_model),
+                text = stringResource(R.string.section_crop_features),
                 color = TextPrimary,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 4.dp, top = 6.dp)
             )
 
-            AiModelOptionCard(
-                model = AiModelPreferenceManager.AiModel.GEMINI,
-                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GEMINI,
-                isInstalled = true,
-                isDefault = true,
-                onSelect = {
-                    currentAiModel = AiModelPreferenceManager.AiModel.GEMINI
-                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GEMINI)
+            // Toggle: Share to AI Mode
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_share_ai_title),
+                description = stringResource(R.string.feature_share_ai_desc),
+                icon = Icons.Default.AutoAwesome,
+                iconTint = Color(0xFFC084FC),
+                isChecked = isShareToAiEnabled,
+                onCheckedChange = { enabled ->
+                    isShareToAiEnabled = enabled
+                    CropFeaturePreferenceManager.setShareToAiEnabled(context, enabled)
                 },
-                testTag = "ai_card_gemini"
+                testTag = "toggle_share_to_ai"
             )
 
-            val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
-            AiModelOptionCard(
-                model = AiModelPreferenceManager.AiModel.CHATGPT,
-                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CHATGPT,
-                isInstalled = isChatGptInstalled,
-                isDefault = false,
-                onSelect = {
-                    currentAiModel = AiModelPreferenceManager.AiModel.CHATGPT
-                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CHATGPT)
+            // Toggle: Batch Select Mode (Default: ON)
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_batch_select_title),
+                description = stringResource(R.string.feature_batch_select_desc),
+                customIcon = { tint ->
+                    BatchStackIcon(tint = tint, modifier = Modifier.size(22.dp))
                 },
-                testTag = "ai_card_chatgpt"
+                iconTint = Color(0xFFFBBF24),
+                isChecked = isBatchSelectEnabled,
+                onCheckedChange = { enabled ->
+                    isBatchSelectEnabled = enabled
+                    CropFeaturePreferenceManager.setBatchSelectEnabled(context, enabled)
+                },
+                testTag = "toggle_batch_select"
             )
 
-            val isClaudeInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CLAUDE)
-            AiModelOptionCard(
-                model = AiModelPreferenceManager.AiModel.CLAUDE,
-                isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CLAUDE,
-                isInstalled = isClaudeInstalled,
-                isDefault = false,
-                onSelect = {
-                    currentAiModel = AiModelPreferenceManager.AiModel.CLAUDE
-                    AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CLAUDE)
-                },
-                testTag = "ai_card_claude"
-            )
+            // Section: AI Model to Share (Gemini default, ChatGPT & Claude) - only when Share to AI is active
+            AnimatedVisibility(visible = isShareToAiEnabled) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(R.string.section_ai_model),
+                        color = TextPrimary,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+                    )
+
+                    AiModelOptionCard(
+                        model = AiModelPreferenceManager.AiModel.GEMINI,
+                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GEMINI,
+                        isInstalled = true,
+                        isDefault = true,
+                        onSelect = {
+                            currentAiModel = AiModelPreferenceManager.AiModel.GEMINI
+                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GEMINI)
+                        },
+                        testTag = "ai_card_gemini"
+                    )
+
+                    val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
+                    AiModelOptionCard(
+                        model = AiModelPreferenceManager.AiModel.CHATGPT,
+                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CHATGPT,
+                        isInstalled = isChatGptInstalled,
+                        isDefault = false,
+                        onSelect = {
+                            currentAiModel = AiModelPreferenceManager.AiModel.CHATGPT
+                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CHATGPT)
+                        },
+                        testTag = "ai_card_chatgpt"
+                    )
+
+                    val isClaudeInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CLAUDE)
+                    AiModelOptionCard(
+                        model = AiModelPreferenceManager.AiModel.CLAUDE,
+                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CLAUDE,
+                        isInstalled = isClaudeInstalled,
+                        isDefault = false,
+                        onSelect = {
+                            currentAiModel = AiModelPreferenceManager.AiModel.CLAUDE
+                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CLAUDE)
+                        },
+                        testTag = "ai_card_claude"
+                    )
+                }
+            }
 
             // Section: What You Can Do (Gemini AI, Share with preview, Copy & Save)
             Text(
@@ -796,6 +851,93 @@ private fun AiModelOptionCard(
                     unselectedColor = TextSecondary.copy(alpha = 0.4f)
                 ),
                 modifier = Modifier.testTag("${testTag}_radio")
+            )
+        }
+    }
+}
+
+/**
+ * Modern toggle card for enabling/disabling app features like Share to AI and Batch Select mode.
+ */
+@Composable
+private fun ToggleOptionCard(
+    title: String,
+    description: String,
+    icon: ImageVector? = null,
+    customIcon: (@Composable (tint: Color) -> Unit)? = null,
+    iconTint: Color,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    testTag: String
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag)
+            .clickable { onCheckedChange(!isChecked) },
+        shape = RoundedCornerShape(16.dp),
+        color = if (isChecked) SlateSurfaceCard else SlateSurface,
+        border = BorderStroke(
+            1.2.dp,
+            if (isChecked) iconTint.copy(alpha = 0.6f) else SlateBorder
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(iconTint.copy(alpha = if (isChecked) 0.18f else 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                val currentTint = if (isChecked) iconTint else TextSecondary
+                if (customIcon != null) {
+                    customIcon(currentTint)
+                } else if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = currentTint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = description,
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Switch(
+                checked = isChecked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = SlateDarkBg,
+                    checkedTrackColor = iconTint,
+                    uncheckedThumbColor = TextSecondary,
+                    uncheckedTrackColor = SlateBorder
+                ),
+                modifier = Modifier.testTag("${testTag}_switch")
             )
         }
     }
