@@ -44,6 +44,8 @@
     <string name="section_ai_model">AI Model to Share</string>
     <string name="ai_model_gemini_title">Google Gemini</string>
     <string name="ai_model_gemini_desc">Default • Analyze screenshots with Gemini</string>
+    <string name="ai_model_google_search_title">Google Search</string>
+    <string name="ai_model_google_search_desc">Visual search, Lens &amp; identify anything on screen</string>
     <string name="ai_model_chatgpt_title">ChatGPT</string>
     <string name="ai_model_chatgpt_desc">Share screenshots directly to ChatGPT</string>
     <string name="ai_model_claude_title">Claude</string>
@@ -62,6 +64,7 @@
     <string name="crop_btn_select_full_screen">Select Whole Screen</string>
     <string name="crop_btn_select_text">Select Text</string>
     <string name="crop_btn_gemini">Ask Gemini</string>
+    <string name="crop_btn_google_search">Search with Google</string>
     <string name="crop_btn_share">Share</string>
     <string name="crop_btn_reset">Reset</string>
     <string name="crop_btn_close">Close</string>
@@ -102,8 +105,21 @@
     <!-- Crop Modes & Toggles -->
     <string name="section_crop_features">Crop Modes &amp; Actions</string>
     <string name="feature_share_ai_title">Share to AI</string>
-    <string name="feature_share_ai_desc">Show Ask AI action in crop dock to send image to Gemini, ChatGPT, or Claude</string>
+    <string name="feature_share_ai_desc">Show Ask AI action in crop dock to send image to Gemini, Google Search, ChatGPT, or Claude</string>
     <string name="feature_batch_select_title">Batch Select Mode</string>
     <string name="feature_batch_select_desc">Collect multiple crops into temporary batch to share or save all at once</string>
+
+    <!-- Circle to Search OCR Mode -->
+    <string name="ocr_cts_title">Text Select</string>
+    <string name="ocr_cts_tap_hint">Tap words or drag to select</string>
+    <string name="ocr_cts_select_all">Select all</string>
+    <string name="ocr_cts_clear">Clear</string>
+    <string name="ocr_cts_copy_selection">Copy</string>
+    <string name="ocr_cts_copied">Copied!</string>
+    <string name="ocr_cts_search">Search</string>
+    <string name="ocr_cts_share">Share</string>
+    <string name="ocr_cts_words_selected">%1$d selected</string>
+    <string name="ocr_cts_all_selected">All selected</string>
+    <string name="ocr_cts_no_selection">Tap words to select</string>
 </resources>
 

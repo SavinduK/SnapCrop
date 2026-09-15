@@ -37,10 +37,13 @@ import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -99,8 +102,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -371,14 +377,64 @@ class CropOverlayActivity : ComponentActivity() {
             // Explicitly grant URI read permissions to target packages
             try {
                 grantUriPermission(selectedModel.packageName, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                if (selectedModel == AiModelPreferenceManager.AiModel.GEMINI) {
+                if (selectedModel == AiModelPreferenceManager.AiModel.GEMINI ||
+                    selectedModel == AiModelPreferenceManager.AiModel.GOOGLE_SEARCH
+                ) {
                     grantUriPermission("com.google.android.googlequicksearchbox", contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    grantUriPermission("com.google.ar.lens", contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Could not pre-grant URI permission to ${selectedModel.packageName}", e)
             }
 
             var launched = false
+
+            // Strategy 0: Direct Google Search / Lens Visual Search intent
+            if (selectedModel == AiModelPreferenceManager.AiModel.GOOGLE_SEARCH) {
+                // Try 0a: Google Lens direct send
+                val lensIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    setDataAndType(contentUri, "image/png")
+                    putExtra(Intent.EXTRA_STREAM, contentUri)
+                    clipData = ClipData.newUri(contentResolver, "Google Lens Search", contentUri)
+                    setPackage("com.google.ar.lens")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (lensIntent.resolveActivity(packageManager) != null ||
+                    packageManager.queryIntentActivities(lensIntent, 0).isNotEmpty()
+                ) {
+                    try {
+                        startActivity(lensIntent)
+                        Toast.makeText(this, "Searching with Google Lens…", Toast.LENGTH_SHORT).show()
+                        launched = true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Lens direct send failed", e)
+                    }
+                }
+
+                // Try 0b: Google Search app (com.google.android.googlequicksearchbox)
+                if (!launched) {
+                    val googleSearchIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/png"
+                        setDataAndType(contentUri, "image/png")
+                        putExtra(Intent.EXTRA_STREAM, contentUri)
+                        clipData = ClipData.newUri(contentResolver, "Google Search", contentUri)
+                        setPackage("com.google.android.googlequicksearchbox")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    if (googleSearchIntent.resolveActivity(packageManager) != null ||
+                        packageManager.queryIntentActivities(googleSearchIntent, 0).isNotEmpty()
+                    ) {
+                        try {
+                            startActivity(googleSearchIntent)
+                            Toast.makeText(this, "Opening in Google Search…", Toast.LENGTH_SHORT).show()
+                            launched = true
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Google app send failed", e)
+                        }
+                    }
+                }
+            }
 
             // Strategy 1: Direct ACTION_SEND targeting selected AI standalone app
             val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -615,11 +671,32 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     /**
+     * Individual detected text element mapped to on-screen coordinates for interactive selection.
+     */
+    data class OcrTextElement(
+        val id: String,
+        val text: String,
+        val rect: RectF,
+        val lineIndex: Int,
+        val isSelected: Boolean = true
+    )
+
+    /**
+     * Result of on-device OCR containing full text, block segments, and word elements.
+     */
+    data class OcrRecognitionResult(
+        val fullText: String,
+        val blocks: List<String>,
+        val elements: List<OcrTextElement>
+    )
+
+    /**
      * Performs on-device text recognition (OCR) on the cropped region using Google ML Kit.
+     * Extracts individual text elements with precise bounding boxes mapped to the SelectionView.
      */
     private fun performTextRecognition(
         rect: RectF,
-        onSuccess: (String, List<String>) -> Unit,
+        onSuccess: (OcrRecognitionResult) -> Unit,
         onEmpty: () -> Unit,
         onError: (Exception) -> Unit
     ) {
@@ -629,20 +706,88 @@ class CropOverlayActivity : ComponentActivity() {
             return
         }
 
+        val view = selectionViewRef
+        val viewW = view?.width?.toFloat() ?: 1f
+        val viewH = view?.height?.toFloat() ?: 1f
+        val bitmap = loadedBitmap
+        val scaleX = if (bitmap != null && viewW > 0f) bitmap.width.toFloat() / viewW else 1f
+        val scaleY = if (bitmap != null && viewH > 0f) bitmap.height.toFloat() / viewH else 1f
+
+        val cropLeft = (rect.left * scaleX).toInt().coerceIn(0, (bitmap?.width ?: 1) - 1)
+        val cropTop = (rect.top * scaleY).toInt().coerceIn(0, (bitmap?.height ?: 1) - 1)
+
         try {
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    val text = visionText.text.trim()
+                    val fullText = visionText.text.trim()
+                    if (fullText.isEmpty()) {
+                        croppedBitmap.recycle()
+                        onEmpty()
+                        return@addOnSuccessListener
+                    }
+
+                    val elements = mutableListOf<OcrTextElement>()
+                    var elemCounter = 0
+                    var currentLineIdx = 0
+
+                    for (block in visionText.textBlocks) {
+                        for (line in block.lines) {
+                            if (line.elements.isNotEmpty()) {
+                                for (elem in line.elements) {
+                                    val elemBox = elem.boundingBox
+                                    if (elemBox != null && elem.text.isNotBlank()) {
+                                        val screenRect = RectF(
+                                            (cropLeft + elemBox.left) / scaleX,
+                                            (cropTop + elemBox.top) / scaleY,
+                                            (cropLeft + elemBox.right) / scaleX,
+                                            (cropTop + elemBox.bottom) / scaleY
+                                        )
+                                        elements.add(
+                                            OcrTextElement(
+                                                id = "elem_${elemCounter++}",
+                                                text = elem.text,
+                                                rect = screenRect,
+                                                lineIndex = currentLineIdx,
+                                                isSelected = true
+                                            )
+                                        )
+                                    }
+                                }
+                            } else {
+                                val lineBox = line.boundingBox
+                                if (lineBox != null && line.text.isNotBlank()) {
+                                    val screenRect = RectF(
+                                        (cropLeft + lineBox.left) / scaleX,
+                                        (cropTop + lineBox.top) / scaleY,
+                                        (cropLeft + lineBox.right) / scaleX,
+                                        (cropTop + lineBox.bottom) / scaleY
+                                    )
+                                    elements.add(
+                                        OcrTextElement(
+                                            id = "elem_${elemCounter++}",
+                                            text = line.text,
+                                            rect = screenRect,
+                                            lineIndex = currentLineIdx,
+                                            isSelected = true
+                                        )
+                                    )
+                                }
+                            }
+                            currentLineIdx++
+                        }
+                    }
+
                     val blocks = visionText.textBlocks.mapNotNull { block ->
                         block.text.trim().takeIf { it.isNotEmpty() }
                     }
+
                     croppedBitmap.recycle()
-                    if (text.isEmpty()) {
+                    if (elements.isEmpty()) {
                         onEmpty()
                     } else {
-                        onSuccess(text, blocks)
+                        onSuccess(OcrRecognitionResult(fullText, blocks, elements))
                     }
                 }
                 .addOnFailureListener { ex ->
@@ -808,7 +953,7 @@ private fun CropOverlayContent(
     onGeminiRequested: (RectF) -> Unit,
     onOcrRequested: (
         rect: RectF,
-        onSuccess: (String, List<String>) -> Unit,
+        onSuccess: (CropOverlayActivity.OcrRecognitionResult) -> Unit,
         onError: (Exception) -> Unit,
         onEmpty: () -> Unit
     ) -> Unit,
@@ -839,10 +984,14 @@ private fun CropOverlayContent(
     val isShareToAiEnabled = remember { CropFeaturePreferenceManager.isShareToAiEnabled(context) }
     val isBatchModeEnabled = remember { CropFeaturePreferenceManager.isBatchSelectEnabled(context) }
 
-    // OCR State
+    // Circle to Search OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
+    var isOcrActive by remember { mutableStateOf(false) }
     var ocrResultText by remember { mutableStateOf<String?>(null) }
     var ocrBlocks by remember { mutableStateOf<List<String>>(emptyList()) }
+    var ocrElements by remember { mutableStateOf<List<CropOverlayActivity.OcrTextElement>>(emptyList()) }
+    var isCopiedNotification by remember { mutableStateOf(false) }
+    var showFullTextSheet by remember { mutableStateOf(false) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val density = LocalDensity.current
@@ -857,6 +1006,13 @@ private fun CropOverlayContent(
                     onSelectionChanged = { rect, interacting ->
                         selectionRect = rect?.let { RectF(it) }
                         isInteracting = interacting
+                        if (interacting && isOcrActive) {
+                            isOcrActive = false
+                            activeSelectionView?.isOcrMode = false
+                            ocrElements = emptyList()
+                            ocrResultText = null
+                            isCopiedNotification = false
+                        }
                     }
                     onViewAttached(this)
                     activeSelectionView = this
@@ -870,6 +1026,26 @@ private fun CropOverlayContent(
 
         val currentRect = selectionRect
         val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
+
+        // 1b. Circle to Search Interactive OCR Highlight Layer directly over the crop box
+        if (isOcrActive && currentRect != null && ocrElements.isNotEmpty()) {
+            OcrHighlightOverlay(
+                selectionRect = currentRect,
+                elements = ocrElements,
+                onElementToggle = { toggledElem ->
+                    ocrElements = ocrElements.map {
+                        if (it.id == toggledElem.id) it.copy(isSelected = !it.isSelected) else it
+                    }
+                    isCopiedNotification = false
+                },
+                onElementSelect = { elemId, selected ->
+                    ocrElements = ocrElements.map {
+                        if (it.id == elemId) it.copy(isSelected = selected) else it
+                    }
+                    isCopiedNotification = false
+                }
+            )
+        }
 
         // 2. Top-Bar Utility Header: Cancel Button & Collapsible Batch Toggle
         Box(
@@ -1052,13 +1228,13 @@ private fun CropOverlayContent(
             }
         }
 
-        // 3. Floating Action Dock (Select Text, Gemini/AI, Add to Batch, Copy, Share, Save)
+        // 3. Floating Action Dock (Select Text, Gemini/AI, Add to Batch, Copy, Share, Save) OR Circle to Search OCR Action Dock
         // Positioned contextually below (or above) the bounding box
-        if (hasValidSelection && currentRect != null && ocrResultText == null) {
+        if (hasValidSelection && currentRect != null && !showFullTextSheet) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
             val activeButtonsCount = 3 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
-            val estimatedToolbarWidthDp = 16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1))
+            val estimatedToolbarWidthDp = if (isOcrActive) 330.dp else (16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1)))
             val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
@@ -1116,65 +1292,111 @@ private fun CropOverlayContent(
                         }
                     }
 
-                    // Main Action Capsule Dock
-                    Surface(
-                        shape = RoundedCornerShape(percent = 50),
-                        color = Color(0xF21E232B), // Dark capsule dock
-                        tonalElevation = 6.dp,
-                        shadowElevation = 12.dp,
-                        border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
-                        modifier = Modifier.testTag("floating_action_toolbar")
-                    ) {
-                        val selectedAiModel = remember { AiModelPreferenceManager.getSelectedModel(context) }
-
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // 1. Select Text (OCR) Button
-                            CropActionCircleButton(
-                                onClick = {
-                                    isOcrProcessing = true
-                                    onOcrRequested(
-                                        currentRect,
-                                        { text, blocks ->
-                                            isOcrProcessing = false
-                                            ocrResultText = text
-                                            ocrBlocks = blocks
-                                        },
-                                        { ex ->
-                                            isOcrProcessing = false
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.toast_ocr_failed),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        },
-                                        {
-                                            isOcrProcessing = false
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.toast_no_text_detected),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    )
-                                },
-                                contentDescription = stringResource(R.string.crop_btn_select_text),
-                                testTag = "btn_select_text_crop",
-                                backgroundColor = Color(0x3300E5FF)
-                            ) {
-                                SelectTextIcon(tint = Color(0xFF00E5FF))
+                    if (isOcrActive && ocrElements.isNotEmpty()) {
+                        // Circle to Search OCR Action Dock
+                        CircleToSearchOcrDock(
+                            elements = ocrElements,
+                            isCopied = isCopiedNotification,
+                            onToggleSelectAll = {
+                                val allSelected = ocrElements.all { it.isSelected }
+                                ocrElements = ocrElements.map { it.copy(isSelected = !allSelected) }
+                                isCopiedNotification = false
+                            },
+                            onCopySelected = {
+                                val textToCopy = getSelectedOcrText(ocrElements)
+                                if (textToCopy.isNotBlank()) {
+                                    onCopyText(textToCopy)
+                                    isCopiedNotification = true
+                                }
+                            },
+                            onSearchGoogle = {
+                                val textToSearch = getSelectedOcrText(ocrElements)
+                                if (textToSearch.isNotBlank()) {
+                                    onSearchGoogle(textToSearch)
+                                }
+                            },
+                            onShareText = {
+                                val textToShare = getSelectedOcrText(ocrElements)
+                                if (textToShare.isNotBlank()) {
+                                    onShareText(textToShare)
+                                }
+                            },
+                            onOpenFullSheet = {
+                                showFullTextSheet = true
+                            },
+                            onCloseOcr = {
+                                isOcrActive = false
+                                activeSelectionView?.isOcrMode = false
+                                ocrElements = emptyList()
+                                ocrResultText = null
+                                isCopiedNotification = false
                             }
+                        )
+                    } else {
+                        // Main Action Capsule Dock
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = Color(0xF21E232B), // Dark capsule dock
+                            tonalElevation = 6.dp,
+                            shadowElevation = 12.dp,
+                            border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
+                            modifier = Modifier.testTag("floating_action_toolbar")
+                        ) {
+                            val selectedAiModel = remember { AiModelPreferenceManager.getSelectedModel(context) }
 
-                            // 2. Ask AI Button (Gemini, ChatGPT, or Claude) - conditional on Share to AI toggle
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // 1. Select Text (OCR) Button -> enters Circle to Search mode
+                                CropActionCircleButton(
+                                    onClick = {
+                                        isOcrProcessing = true
+                                        onOcrRequested(
+                                            currentRect,
+                                            { result ->
+                                                isOcrProcessing = false
+                                                ocrResultText = result.fullText
+                                                ocrBlocks = result.blocks
+                                                ocrElements = result.elements
+                                                isOcrActive = true
+                                                isCopiedNotification = false
+                                                activeSelectionView?.isOcrMode = true
+                                            },
+                                            { ex ->
+                                                isOcrProcessing = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_ocr_failed),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            {
+                                                isOcrProcessing = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.toast_no_text_detected),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        )
+                                    },
+                                    contentDescription = stringResource(R.string.crop_btn_select_text),
+                                    testTag = "btn_select_text_crop",
+                                    backgroundColor = Color(0x3300E5FF)
+                                ) {
+                                    SelectTextIcon(tint = Color(0xFF00E5FF))
+                                }
+
+                            // 2. Ask AI Button (Gemini, Google Search, ChatGPT, or Claude) - conditional on Share to AI toggle
                             if (isShareToAiEnabled) {
                                 CropActionCircleButton(
                                     onClick = {
                                         onGeminiRequested(currentRect)
                                     },
                                     contentDescription = when (selectedAiModel) {
+                                        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> stringResource(R.string.crop_btn_google_search)
                                         AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
                                         AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
                                         else -> stringResource(R.string.crop_btn_gemini)
@@ -1182,6 +1404,7 @@ private fun CropOverlayContent(
                                     testTag = "btn_gemini_crop"
                                 ) {
                                     when (selectedAiModel) {
+                                        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> GoogleSearchIcon(modifier = Modifier.size(20.dp))
                                         AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon()
                                         AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
                                         else -> GeminiSparkleIcon()
@@ -1248,6 +1471,7 @@ private fun CropOverlayContent(
                     }
                 }
             }
+        }
         }
 
         // 3b. Batch Share Dialog
@@ -1368,9 +1592,9 @@ private fun CropOverlayContent(
             )
         }
 
-        // 4. OCR Result Bottom Sheet Modal
+        // 4. OCR Result Bottom Sheet Modal (opened via CTS full sheet button)
         AnimatedVisibility(
-            visible = ocrResultText != null,
+            visible = showFullTextSheet && ocrResultText != null,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -1380,8 +1604,7 @@ private fun CropOverlayContent(
                     text = initialText,
                     blocks = ocrBlocks,
                     onDismiss = {
-                        ocrResultText = null
-                        ocrBlocks = emptyList()
+                        showFullTextSheet = false
                     },
                     onCopyText = { textToCopy ->
                         onCopyText(textToCopy)
@@ -1392,6 +1615,353 @@ private fun CropOverlayContent(
                     onShareText = { textToShare ->
                         onShareText(textToShare)
                     }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Extracts string representation of selected OCR elements grouped into lines.
+ */
+private fun getSelectedOcrText(elements: List<CropOverlayActivity.OcrTextElement>): String {
+    val selected = elements.filter { it.isSelected }
+    if (selected.isEmpty()) return ""
+    return selected.groupBy { it.lineIndex }
+        .toSortedMap()
+        .values
+        .joinToString("\n") { lineElems ->
+            lineElems.sortedBy { it.rect.left }.joinToString(" ") { it.text }
+        }
+}
+
+/**
+ * Circle to Search In-place OCR Highlight Layer.
+ * Renders highlighted text blocks directly over the screenshot on the crop overlay,
+ * allowing tap-to-select and drag-to-select words with haptic feedback.
+ */
+@Composable
+private fun OcrHighlightOverlay(
+    selectionRect: RectF,
+    elements: List<CropOverlayActivity.OcrTextElement>,
+    onElementToggle: (CropOverlayActivity.OcrTextElement) -> Unit,
+    onElementSelect: (String, Boolean) -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        ComposeCanvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(elements) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startPos = down.position
+                        val slop = viewConfiguration.touchSlop
+                        var isDrag = false
+
+                        val paddingPx = 8.dp.toPx()
+                        val startElem = elements.find { elem ->
+                            startPos.x >= (elem.rect.left - paddingPx) &&
+                            startPos.x <= (elem.rect.right + paddingPx) &&
+                            startPos.y >= (elem.rect.top - paddingPx) &&
+                            startPos.y <= (elem.rect.bottom + paddingPx)
+                        }
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) {
+                                if (!isDrag && startElem != null) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onElementToggle(startElem)
+                                }
+                                break
+                            }
+
+                            val curPos = change.position
+                            val dx = curPos.x - startPos.x
+                            val dy = curPos.y - startPos.y
+                            if (!isDrag && (dx * dx + dy * dy) > (slop * slop)) {
+                                isDrag = true
+                                if (startElem != null) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onElementSelect(startElem.id, true)
+                                }
+                            }
+
+                            if (isDrag) {
+                                change.consume()
+                                val curElem = elements.find { elem ->
+                                    curPos.x >= (elem.rect.left - paddingPx) &&
+                                    curPos.x <= (elem.rect.right + paddingPx) &&
+                                    curPos.y >= (elem.rect.top - paddingPx) &&
+                                    curPos.y <= (elem.rect.bottom + paddingPx)
+                                }
+                                if (curElem != null && !curElem.isSelected) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onElementSelect(curElem.id, true)
+                                }
+                            }
+                        }
+                    }
+                }
+        ) {
+            val cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+            val selectedFill = Color(0x6600E5FF) // Electric cyan highlighter
+            val selectedStroke = Color(0xFF00E5FF)
+            val unselectedFill = Color(0x2200E5FF)
+            val unselectedStroke = Color(0x5500E5FF)
+
+            val selectedElements = elements.filter { it.isSelected }
+
+            for (elem in elements) {
+                val r = elem.rect
+                val padX = 2.5.dp.toPx()
+                val padY = 2.dp.toPx()
+                val drawTopLeft = Offset(r.left - padX, r.top - padY)
+                val drawSize = Size(r.width() + padX * 2, r.height() + padY * 2)
+
+                if (elem.isSelected) {
+                    drawRoundRect(
+                        color = selectedFill,
+                        topLeft = drawTopLeft,
+                        size = drawSize,
+                        cornerRadius = cornerRadius
+                    )
+                    drawRoundRect(
+                        color = selectedStroke,
+                        topLeft = drawTopLeft,
+                        size = drawSize,
+                        cornerRadius = cornerRadius,
+                        style = Stroke(width = 1.6.dp.toPx())
+                    )
+                } else {
+                    drawRoundRect(
+                        color = unselectedFill,
+                        topLeft = drawTopLeft,
+                        size = drawSize,
+                        cornerRadius = cornerRadius
+                    )
+                    drawRoundRect(
+                        color = unselectedStroke,
+                        topLeft = drawTopLeft,
+                        size = drawSize,
+                        cornerRadius = cornerRadius,
+                        style = Stroke(width = 0.8.dp.toPx())
+                    )
+                }
+            }
+
+            // Endpoint Circle to Search handles/pins
+            if (selectedElements.isNotEmpty()) {
+                val first = selectedElements.minByOrNull { it.rect.top * 10000 + it.rect.left }
+                val last = selectedElements.maxByOrNull { it.rect.bottom * 10000 + it.rect.right }
+
+                if (first != null) {
+                    val pinRadius = 4.dp.toPx()
+                    val pinCenter = Offset(first.rect.left - 2.5.dp.toPx(), first.rect.top - 2.dp.toPx())
+                    drawCircle(
+                        color = Color(0xFF00E5FF),
+                        radius = pinRadius,
+                        center = pinCenter
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = pinRadius * 0.5f,
+                        center = pinCenter
+                    )
+                }
+
+                if (last != null) {
+                    val pinRadius = 4.dp.toPx()
+                    val pinCenter = Offset(last.rect.right + 2.5.dp.toPx(), last.rect.bottom + 2.dp.toPx())
+                    drawCircle(
+                        color = Color(0xFF00E5FF),
+                        radius = pinRadius,
+                        center = pinCenter
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = pinRadius * 0.5f,
+                        center = pinCenter
+                    )
+                }
+            }
+        }
+
+        // Small floating guidance badge inside selection box
+        val hintTop = (selectionRect.top - 28.dp.value).coerceAtLeast(16f)
+        val hintLeft = selectionRect.left.coerceAtLeast(16f)
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(hintLeft.roundToInt(), hintTop.roundToInt()) }
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xD90F172A))
+                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(12.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = "Tap or drag words to select",
+                color = Color(0xFF00E5FF),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+/**
+ * Circle to Search Floating Action Dock for in-place text operations:
+ * Copy selected words, Toggle all, Search Google, Share, Open full sheet, and Close.
+ */
+@Composable
+private fun CircleToSearchOcrDock(
+    elements: List<CropOverlayActivity.OcrTextElement>,
+    isCopied: Boolean,
+    onToggleSelectAll: () -> Unit,
+    onCopySelected: () -> Unit,
+    onSearchGoogle: () -> Unit,
+    onShareText: () -> Unit,
+    onOpenFullSheet: () -> Unit,
+    onCloseOcr: () -> Unit
+) {
+    val selectedCount = elements.count { it.isSelected }
+    val totalCount = elements.size
+    val allSelected = selectedCount == totalCount
+
+    Surface(
+        shape = RoundedCornerShape(percent = 50),
+        color = Color(0xF2161E2E), // Deep slate pill
+        tonalElevation = 6.dp,
+        shadowElevation = 14.dp,
+        border = BorderStroke(1.2.dp, Color(0x6600E5FF)),
+        modifier = Modifier.testTag("circle_to_search_dock")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            // 1. Selection indicator / toggle all chip
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0x3300E5FF))
+                    .clickable(onClick = onToggleSelectAll)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (allSelected) "All ($totalCount)" else "$selectedCount/$totalCount",
+                    color = Color(0xFF00E5FF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // 2. Primary Copy Button (prominent Circle to Search action)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        if (isCopied) Color(0xFF10B981)
+                        else if (selectedCount > 0) Color(0xFF00E5FF)
+                        else Color(0x3300E5FF)
+                    )
+                    .clickable(
+                        enabled = selectedCount > 0,
+                        onClick = onCopySelected
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag("btn_cts_copy"),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (isCopied) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Copied",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "Copied",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy text",
+                            tint = if (selectedCount > 0) Color(0xFF0F172A) else Color(0x66FFFFFF),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "Copy",
+                            color = if (selectedCount > 0) Color(0xFF0F172A) else Color(0x66FFFFFF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // 3. Search Google Button
+            CropActionCircleButton(
+                onClick = onSearchGoogle,
+                contentDescription = "Search Google",
+                testTag = "btn_cts_search",
+                enabled = selectedCount > 0,
+                backgroundColor = Color(0x28FFFFFF)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search Google",
+                    tint = if (selectedCount > 0) Color.White else Color(0x44FFFFFF),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // 4. Share Text Button
+            CropActionCircleButton(
+                onClick = onShareText,
+                contentDescription = "Share text",
+                testTag = "btn_cts_share",
+                enabled = selectedCount > 0,
+                backgroundColor = Color(0x28FFFFFF)
+            ) {
+                ShareNodesIcon(
+                    tint = if (selectedCount > 0) Color.White else Color(0x44FFFFFF)
+                )
+            }
+
+            // 5. Open Full Sheet / Edit Button
+            CropActionCircleButton(
+                onClick = onOpenFullSheet,
+                contentDescription = "View full text sheet",
+                testTag = "btn_cts_expand",
+                backgroundColor = Color(0x28FFFFFF)
+            ) {
+                SelectTextIcon(tint = Color(0xFF94A3B8))
+            }
+
+            // 6. Close / Exit OCR Mode Button
+            CropActionCircleButton(
+                onClick = onCloseOcr,
+                contentDescription = "Close text selection",
+                testTag = "btn_cts_close",
+                backgroundColor = Color(0x28EF4444)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close text selection",
+                    tint = Color(0xFFEF4444),
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
@@ -1747,6 +2317,7 @@ private fun CropActionCircleButton(
     contentDescription: String,
     testTag: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     backgroundColor: Color = Color(0x28FFFFFF),
     content: @Composable () -> Unit
 ) {
@@ -1754,8 +2325,8 @@ private fun CropActionCircleButton(
         modifier = modifier
             .size(42.dp)
             .clip(CircleShape)
-            .background(backgroundColor)
-            .clickable(onClick = onClick)
+            .background(if (enabled) backgroundColor else Color(0x15FFFFFF))
+            .clickable(enabled = enabled, onClick = onClick)
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {

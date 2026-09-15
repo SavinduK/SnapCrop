@@ -12,7 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 
@@ -20,7 +22,7 @@ import androidx.compose.ui.unit.dp
  * AiModelPreferenceManager
  *
  * Persists the user's preferred AI model for sharing cropped screenshots.
- * Default is GEMINI. Supports ChatGPT and Claude when installed.
+ * Default is GEMINI. Supports Google Search, ChatGPT and Claude when installed.
  */
 object AiModelPreferenceManager {
     private const val PREFS_NAME = "snapcrop_ai_prefs"
@@ -39,6 +41,13 @@ object AiModelPreferenceManager {
             description = "Default • Explain, summarize, or solve anything",
             packageName = "com.google.android.apps.bard",
             fallbackUrl = "https://gemini.google.com/"
+        ),
+        GOOGLE_SEARCH(
+            id = "google_search",
+            displayName = "Google Search",
+            description = "Visual search, Lens & identify anything on screen",
+            packageName = "com.google.android.googlequicksearchbox",
+            fallbackUrl = "https://lens.google.com/"
         ),
         CHATGPT(
             id = "chatgpt",
@@ -80,6 +89,10 @@ object AiModelPreferenceManager {
             AiModel.GEMINI -> {
                 isPackageInstalled(context, model.packageName) ||
                         isPackageInstalled(context, "com.google.android.googlequicksearchbox")
+            }
+            AiModel.GOOGLE_SEARCH -> {
+                isPackageInstalled(context, "com.google.android.googlequicksearchbox") ||
+                        isPackageInstalled(context, "com.google.ar.lens")
             }
             AiModel.CHATGPT, AiModel.CLAUDE -> {
                 isPackageInstalled(context, model.packageName)
@@ -193,3 +206,75 @@ fun ClaudeIcon(
         )
     }
 }
+
+/**
+ * Custom vector canvas for Google Search / Lens icon with Google's iconic 4-color palette.
+ */
+@Composable
+fun GoogleSearchIcon(
+    modifier: Modifier = Modifier.size(22.dp)
+) {
+    ComposeCanvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 2.2f * density
+        val pad = w * 0.12f
+        val cornerLen = w * 0.26f
+
+        val blue = Color(0xFF4285F4)
+        val red = Color(0xFFEA4335)
+        val yellow = Color(0xFFFBBC05)
+        val green = Color(0xFF34A853)
+
+        // Top-Left corner bracket (Blue)
+        val tlPath = Path().apply {
+            moveTo(pad, pad + cornerLen)
+            lineTo(pad, pad + 4f * density)
+            quadraticTo(pad, pad, pad + 4f * density, pad)
+            lineTo(pad + cornerLen, pad)
+        }
+        drawPath(tlPath, blue, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Top-Right corner bracket (Red)
+        val trPath = Path().apply {
+            moveTo(w - pad - cornerLen, pad)
+            lineTo(w - pad - 4f * density, pad)
+            quadraticTo(w - pad, pad, w - pad, pad + 4f * density)
+            lineTo(w - pad, pad + cornerLen)
+        }
+        drawPath(trPath, red, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-Right corner bracket (Green)
+        val brPath = Path().apply {
+            moveTo(w - pad, h - pad - cornerLen)
+            lineTo(w - pad, h - pad - 4f * density)
+            quadraticTo(w - pad, h - pad, w - pad - 4f * density, h - pad)
+            lineTo(w - pad - cornerLen, h - pad)
+        }
+        drawPath(brPath, green, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Bottom-Left corner bracket (Yellow)
+        val blPath = Path().apply {
+            moveTo(pad + cornerLen, h - pad)
+            lineTo(pad + 4f * density, h - pad)
+            quadraticTo(pad, h - pad, pad, h - pad - 4f * density)
+            lineTo(pad, h - pad - cornerLen)
+        }
+        drawPath(blPath, yellow, style = Stroke(strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // Center Lens pupil
+        drawCircle(
+            color = blue,
+            radius = w * 0.18f,
+            center = Offset(w / 2f, h / 2f),
+            style = Stroke(strokeW)
+        )
+        // Red dot in lens
+        drawCircle(
+            color = red,
+            radius = w * 0.08f,
+            center = Offset(w / 2f, h / 2f)
+        )
+    }
+}
+

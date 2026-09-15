@@ -56,6 +56,21 @@ open class SelectionView @JvmOverloads constructor(
      */
     var onSelectionChanged: ((rect: RectF?, isInteracting: Boolean) -> Unit)? = null
 
+    /**
+     * When false, touch events on SelectionView are ignored (e.g. during OCR text selection mode).
+     */
+    var isTouchEnabled: Boolean = true
+
+    /**
+     * When true, hides rule-of-thirds and edge handles to display text highlights cleanly.
+     */
+    var isOcrMode: Boolean = false
+        set(value) {
+            field = value
+            isTouchEnabled = !value
+            invalidate()
+        }
+
     // Touch interaction state
     private var touchMode = TouchMode.NONE
     private var hasSelection = false
@@ -188,61 +203,65 @@ open class SelectionView @JvmOverloads constructor(
             canvas.drawRect(0f, selectionRect.top, selectionRect.left, selectionRect.bottom, maskPaint) // Left
             canvas.drawRect(selectionRect.right, selectionRect.top, viewW, selectionRect.bottom, maskPaint) // Right
 
-            // 3. Rule of thirds guide lines
-            val thirdW = selectionRect.width() / 3f
-            val thirdH = selectionRect.height() / 3f
-            canvas.drawLine(selectionRect.left + thirdW, selectionRect.top, selectionRect.left + thirdW, selectionRect.bottom, gridPaint)
-            canvas.drawLine(selectionRect.left + 2f * thirdW, selectionRect.top, selectionRect.left + 2f * thirdW, selectionRect.bottom, gridPaint)
-            canvas.drawLine(selectionRect.left, selectionRect.top + thirdH, selectionRect.right, selectionRect.top + thirdH, gridPaint)
-            canvas.drawLine(selectionRect.left, selectionRect.top + 2f * thirdH, selectionRect.right, selectionRect.top + 2f * thirdH, gridPaint)
+            // 3. Rule of thirds guide lines (hidden during OCR mode)
+            if (!isOcrMode) {
+                val thirdW = selectionRect.width() / 3f
+                val thirdH = selectionRect.height() / 3f
+                canvas.drawLine(selectionRect.left + thirdW, selectionRect.top, selectionRect.left + thirdW, selectionRect.bottom, gridPaint)
+                canvas.drawLine(selectionRect.left + 2f * thirdW, selectionRect.top, selectionRect.left + 2f * thirdW, selectionRect.bottom, gridPaint)
+                canvas.drawLine(selectionRect.left, selectionRect.top + thirdH, selectionRect.right, selectionRect.top + thirdH, gridPaint)
+                canvas.drawLine(selectionRect.left, selectionRect.top + 2f * thirdH, selectionRect.right, selectionRect.top + 2f * thirdH, gridPaint)
+            }
 
             // 4. High-contrast cyan border
             canvas.drawRect(selectionRect, cyanBorderPaint)
 
-            // 5. Interactive edge handles (pill shaped)
-            val pillLen = dpToPx(30f)
-            val pillThick = dpToPx(5.5f)
-            val pillRadius = pillThick / 2f
+            // 5. Interactive edge handles (hidden during OCR mode)
+            if (!isOcrMode) {
+                val pillLen = dpToPx(30f)
+                val pillThick = dpToPx(5.5f)
+                val pillRadius = pillThick / 2f
 
-            // Top Edge
-            edgePillRect.set(
-                selectionRect.centerX() - pillLen / 2f,
-                selectionRect.top - pillThick / 2f,
-                selectionRect.centerX() + pillLen / 2f,
-                selectionRect.top + pillThick / 2f
-            )
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                // Top Edge
+                edgePillRect.set(
+                    selectionRect.centerX() - pillLen / 2f,
+                    selectionRect.top - pillThick / 2f,
+                    selectionRect.centerX() + pillLen / 2f,
+                    selectionRect.top + pillThick / 2f
+                )
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
 
-            // Bottom Edge
-            edgePillRect.set(
-                selectionRect.centerX() - pillLen / 2f,
-                selectionRect.bottom - pillThick / 2f,
-                selectionRect.centerX() + pillLen / 2f,
-                selectionRect.bottom + pillThick / 2f
-            )
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                // Bottom Edge
+                edgePillRect.set(
+                    selectionRect.centerX() - pillLen / 2f,
+                    selectionRect.bottom - pillThick / 2f,
+                    selectionRect.centerX() + pillLen / 2f,
+                    selectionRect.bottom + pillThick / 2f
+                )
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
 
-            // Left Edge
-            edgePillRect.set(
-                selectionRect.left - pillThick / 2f,
-                selectionRect.centerY() - pillLen / 2f,
-                selectionRect.left + pillThick / 2f,
-                selectionRect.centerY() + pillLen / 2f
-            )
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                // Left Edge
+                edgePillRect.set(
+                    selectionRect.left - pillThick / 2f,
+                    selectionRect.centerY() - pillLen / 2f,
+                    selectionRect.left + pillThick / 2f,
+                    selectionRect.centerY() + pillLen / 2f
+                )
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
 
-            // Right Edge
-            edgePillRect.set(
-                selectionRect.right - pillThick / 2f,
-                selectionRect.centerY() - pillLen / 2f,
-                selectionRect.right + pillThick / 2f,
-                selectionRect.centerY() + pillLen / 2f
-            )
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-            canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                // Right Edge
+                edgePillRect.set(
+                    selectionRect.right - pillThick / 2f,
+                    selectionRect.centerY() - pillLen / 2f,
+                    selectionRect.right + pillThick / 2f,
+                    selectionRect.centerY() + pillLen / 2f
+                )
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+            }
         } else {
             // When no selection exists, render full-screen translucent dark mask
             canvas.drawRect(0f, 0f, viewW, viewH, maskPaint)
@@ -250,6 +269,7 @@ open class SelectionView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!isTouchEnabled) return false
         val x = event.x
         val y = event.y
         val viewW = width.toFloat()

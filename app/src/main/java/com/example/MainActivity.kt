@@ -287,6 +287,19 @@ fun SnapCropMainScreen() {
                         testTag = "ai_card_gemini"
                     )
 
+                    val isGoogleSearchInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.GOOGLE_SEARCH)
+                    AiModelOptionCard(
+                        model = AiModelPreferenceManager.AiModel.GOOGLE_SEARCH,
+                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GOOGLE_SEARCH,
+                        isInstalled = isGoogleSearchInstalled,
+                        isDefault = false,
+                        onSelect = {
+                            currentAiModel = AiModelPreferenceManager.AiModel.GOOGLE_SEARCH
+                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GOOGLE_SEARCH)
+                        },
+                        testTag = "ai_card_google_search"
+                    )
+
                     val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
                     AiModelOptionCard(
                         model = AiModelPreferenceManager.AiModel.CHATGPT,
@@ -749,6 +762,7 @@ private fun AiModelOptionCard(
 ) {
     val modelColor = when (model) {
         AiModelPreferenceManager.AiModel.GEMINI -> Color(0xFFC084FC)
+        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> Color(0xFF4285F4)
         AiModelPreferenceManager.AiModel.CHATGPT -> Color(0xFF10A37F)
         AiModelPreferenceManager.AiModel.CLAUDE -> Color(0xFFD97706)
     }
@@ -786,6 +800,9 @@ private fun AiModelOptionCard(
                             tint = modelColor,
                             modifier = Modifier.size(24.dp)
                         )
+                    }
+                    AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> {
+                        GoogleSearchIcon(modifier = Modifier.size(24.dp))
                     }
                     AiModelPreferenceManager.AiModel.CHATGPT -> {
                         ChatGptIcon(tint = modelColor, modifier = Modifier.size(24.dp))
