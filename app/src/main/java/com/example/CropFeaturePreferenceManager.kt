@@ -14,6 +14,7 @@ object CropFeaturePreferenceManager {
     private const val PREFS_NAME = "snapcrop_feature_prefs"
     private const val KEY_SHARE_TO_AI = "feature_share_to_ai"
     private const val KEY_BATCH_SELECT = "feature_batch_select"
+    private const val KEY_LONG_SCREENSHOT = "feature_long_screenshot"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -33,5 +34,13 @@ object CropFeaturePreferenceManager {
 
     fun setBatchSelectEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_BATCH_SELECT, enabled).apply()
+    }
+
+    fun isLongScreenshotEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_LONG_SCREENSHOT, true)
+    }
+
+    fun setLongScreenshotEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_LONG_SCREENSHOT, enabled).apply()
     }
 }

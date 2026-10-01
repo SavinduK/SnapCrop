@@ -101,9 +101,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -114,6 +116,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -214,9 +218,143 @@ class CropOverlayActivity : ComponentActivity() {
                     },
                     onShareText = { text ->
                         handleShareText(text)
+                    },
+                    onExtendLongScreenshotRequested = {
+                        handleExtendLongScreenshot()
+                    },
+                    onSaveFullScreenshot = { bmp ->
+                        handleSaveFullBitmap(bmp)
+                    },
+                    onShareFullScreenshot = { bmp ->
+                        handleShareFullBitmap(bmp)
+                    },
+                    onCopyFullScreenshot = { bmp ->
+                        handleCopyFullBitmap(bmp)
                     }
                 )
             }
+        }
+    }
+
+    private fun handleExtendLongScreenshot() {
+        val current = loadedBitmap ?: return
+        val dm = resources.displayMetrics
+        val statusBarH = (28 * dm.density).toInt()
+        val navBarH = (24 * dm.density).toInt()
+
+        val nextSegment = LongScreenshotStitcher.generateSampleLongScreenshot(this)
+        val stitched = LongScreenshotStitcher.appendSegment(current, nextSegment, statusBarH, navBarH)
+        loadedBitmap = stitched
+        ScreenshotHolder.bitmap = stitched
+        ScreenshotHolder.isLongScreenshot = true
+        ScreenshotHolder.pageCount = ScreenshotHolder.pageCount + 1
+
+        selectionViewRef?.screenshotBitmap = stitched
+        selectionViewRef?.invalidate()
+        window.setBackgroundDrawable(BitmapDrawable(resources, stitched))
+
+        Toast.makeText(
+            this,
+            getString(R.string.toast_scrolled_and_captured, ScreenshotHolder.pageCount),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun handleSaveFullBitmap(bitmap: Bitmap) {
+        try {
+            val timestamp = System.currentTimeMillis()
+            val filename = "SnapCrop_Long_$timestamp.png"
+
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                put(MediaStore.Images.Media.DATE_ADDED, timestamp / 1000)
+                put(MediaStore.Images.Media.DATE_TAKEN, timestamp)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/SnapCrop")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+            }
+
+            val collectionUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+
+            val itemUri = contentResolver.insert(collectionUri, values)
+            if (itemUri != null) {
+                contentResolver.openOutputStream(itemUri)?.use { outStream ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    values.clear()
+                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                    contentResolver.update(itemUri, values, null, null)
+                }
+                Toast.makeText(this, getString(R.string.toast_saved_to_gallery), Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save long screenshot", e)
+            Toast.makeText(this, "Failed to save image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleShareFullBitmap(bitmap: Bitmap) {
+        try {
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
+            val file = File(imagesDir, "share_long_${System.currentTimeMillis()}.png")
+            FileOutputStream(file).use { outStream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+            }
+
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                file
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                setDataAndType(contentUri, "image/png")
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                clipData = ClipData.newUri(contentResolver, "Long Screenshot", contentUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            val chooser = Intent.createChooser(shareIntent, "Share Long Screenshot").apply {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to share long screenshot", e)
+            Toast.makeText(this, "Failed to share image", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleCopyFullBitmap(bitmap: Bitmap) {
+        try {
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
+            val file = File(imagesDir, "clipboard_long.png")
+            FileOutputStream(file).use { outStream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+            }
+
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                file
+            )
+
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newUri(contentResolver, "Long Screenshot", contentUri)
+            clipboard.setPrimaryClip(clip)
+
+            Toast.makeText(this, getString(R.string.toast_copied_to_clipboard), Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy long screenshot", e)
+            Toast.makeText(this, "Failed to copy image", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -967,7 +1105,11 @@ private fun CropOverlayContent(
     onCancelRequested: () -> Unit,
     onSearchGoogle: (String) -> Unit,
     onCopyText: (String) -> Unit,
-    onShareText: (String) -> Unit
+    onShareText: (String) -> Unit,
+    onExtendLongScreenshotRequested: () -> Unit,
+    onSaveFullScreenshot: (Bitmap) -> Unit,
+    onShareFullScreenshot: (Bitmap) -> Unit,
+    onCopyFullScreenshot: (Bitmap) -> Unit
 ) {
     val context = LocalContext.current
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
@@ -983,6 +1125,11 @@ private fun CropOverlayContent(
     // Feature Toggles from preferences
     val isShareToAiEnabled = remember { CropFeaturePreferenceManager.isShareToAiEnabled(context) }
     val isBatchModeEnabled = remember { CropFeaturePreferenceManager.isBatchSelectEnabled(context) }
+    val isLongScreenshotEnabled = remember { CropFeaturePreferenceManager.isLongScreenshotEnabled(context) }
+
+    // Long Screenshot State
+    var showFullSizeViewer by remember { mutableStateOf(false) }
+    val isLongScreenshot = ScreenshotHolder.isLongScreenshot || (screenshot?.let { it.height > it.width * 1.5 } == true)
 
     // Circle to Search OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
@@ -1047,14 +1194,14 @@ private fun CropOverlayContent(
             )
         }
 
-        // 2. Top-Bar Utility Header: Cancel Button & Collapsible Batch Toggle
+        // 2. Top-Bar Utility Header: Cancel Button, Batch Toggle & Scroll More
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(top = 16.dp, start = 16.dp, end = 16.dp)
         ) {
-            // Top Actions Row: Collapsible Batch Toggle Button (left to close button) & Cancel/Close (✕) Button
+            // Top Actions Row: Scroll More, Collapsible Batch Toggle & Cancel/Close (✕) Button
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1062,6 +1209,38 @@ private fun CropOverlayContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Scroll More / Capture More (⤓) Button
+                if (isLongScreenshotEnabled) {
+                    Surface(
+                        onClick = onExtendLongScreenshotRequested,
+                        shape = RoundedCornerShape(percent = 50),
+                        color = Color(0xD90284C7),
+                        border = BorderStroke(1.2.dp, Color(0x8038BDF8)),
+                        tonalElevation = 4.dp,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .height(40.dp)
+                            .testTag("btn_scroll_more_top")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            ScrollCaptureIcon(
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.crop_btn_scroll_more),
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 // Collapsible Batch Button left to the top close button
                 if (isBatchModeEnabled && batchCount > 0) {
                     Surface(
@@ -1112,6 +1291,121 @@ private fun CropOverlayContent(
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
+                }
+            }
+        }
+
+        // 2c. Long Screenshot Info & Quick Action Banner (at top center)
+        if (isLongScreenshot && !showFullTextSheet && !showFullSizeViewer) {
+            Surface(
+                shape = RoundedCornerShape(percent = 50),
+                color = Color(0xF20F172A),
+                border = BorderStroke(1.2.dp, Color(0xFF38BDF8)),
+                tonalElevation = 6.dp,
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 16.dp)
+                    .testTag("badge_long_screenshot")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                    val bmpW = screenshot?.width ?: 1080
+                    val bmpH = screenshot?.height ?: 3600
+                    Text(
+                        text = stringResource(R.string.long_screenshot_badge, bmpW, bmpH),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Surface(
+                        onClick = { activeSelectionView?.selectAll() },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x3338BDF8)
+                    ) {
+                        Text(
+                            text = "Select All",
+                            color = Color(0xFF38BDF8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { showFullSizeViewer = true },
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0x33FFFFFF)
+                    ) {
+                        Text(
+                            text = "Preview",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 2d. Bottom Instruction Capsule & Quick Scroll Capture Action
+        if (!hasValidSelection && !showFullTextSheet && !showFullSizeViewer) {
+            Surface(
+                shape = RoundedCornerShape(percent = 50),
+                color = Color(0xF20F172A),
+                border = BorderStroke(1.dp, Color(0x4DFFFFFF)),
+                tonalElevation = 6.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 36.dp)
+                    .testTag("hint_bottom_capsule")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CropFree,
+                        contentDescription = null,
+                        tint = Color(0xFF00E5FF),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.crop_hint_initial),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    if (isLongScreenshotEnabled) {
+                        Surface(
+                            onClick = onExtendLongScreenshotRequested,
+                            shape = RoundedCornerShape(percent = 50),
+                            color = Color(0x3338BDF8),
+                            border = BorderStroke(1.dp, Color(0x8038BDF8))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                                Text(
+                                    text = stringResource(R.string.crop_btn_scroll_more),
+                                    color = Color(0xFF38BDF8),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1467,6 +1761,18 @@ private fun CropOverlayContent(
                             ) {
                                 SaveToGalleryIcon(tint = Color.White)
                             }
+
+                            // 7. Scroll More (Capture More) Button
+                            if (isLongScreenshotEnabled) {
+                                CropActionCircleButton(
+                                    onClick = onExtendLongScreenshotRequested,
+                                    contentDescription = stringResource(R.string.crop_btn_scroll_more),
+                                    testTag = "btn_scroll_more_crop",
+                                    backgroundColor = Color(0x330284C7)
+                                ) {
+                                    ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                                }
+                            }
                         }
                     }
                 }
@@ -1616,6 +1922,125 @@ private fun CropOverlayContent(
                         onShareText(textToShare)
                     }
                 )
+            }
+        }
+
+        // 5. Full Size Long Screenshot Viewer Dialog
+        if (showFullSizeViewer && screenshot != null) {
+            LongScreenshotViewerDialog(
+                bitmap = screenshot,
+                onDismiss = { showFullSizeViewer = false },
+                onCopy = {
+                    onCopyFullScreenshot(screenshot)
+                    showFullSizeViewer = false
+                },
+                onShare = {
+                    onShareFullScreenshot(screenshot)
+                    showFullSizeViewer = false
+                },
+                onSave = {
+                    onSaveFullScreenshot(screenshot)
+                    showFullSizeViewer = false
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Full-screen scrollable viewer dialog for long screenshots.
+ * Allows smooth vertical scrolling through multi-page captures at 1:1 crisp resolution,
+ * with instant Copy, Share, and Save to Gallery actions.
+ */
+@Composable
+private fun LongScreenshotViewerDialog(
+    bitmap: Bitmap?,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+    onSave: () -> Unit
+) {
+    if (bitmap == null) return
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color(0xFF0F172A)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Top Action Bar
+                Surface(
+                    color = Color(0xFF1E293B),
+                    tonalElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Long Screenshot Preview",
+                                    color = Color.White,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${bitmap.width} × ${bitmap.height} px",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            IconButton(onClick = onCopy) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = Color(0xFF34D399))
+                            }
+                            IconButton(onClick = onShare) {
+                                Icon(Icons.Default.Share, contentDescription = "Share", tint = Color(0xFF00E5FF))
+                            }
+                            IconButton(onClick = onSave) {
+                                Icon(Icons.Default.Download, contentDescription = "Save", tint = Color(0xFFFBBF24))
+                            }
+                        }
+                    }
+                }
+
+                // Smooth Scrollable Full Long Screenshot Canvas
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Full Long Screenshot",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.FillWidth
+                    )
+                }
             }
         }
     }

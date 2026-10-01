@@ -18,6 +18,13 @@ object TriggerPreferenceManager {
         POWER_BUTTON_TRIPLE_TAP // 3 times tap of Power Button
     }
 
+    enum class CaptureMode {
+        STANDARD,        // Quick Crop: Instant single-screen capture
+        LONG_SCREENSHOT  // Long Screenshot: Multi-page scroll capture
+    }
+
+    private const val KEY_CAPTURE_MODE = "capture_mode"
+
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -49,6 +56,23 @@ object TriggerPreferenceManager {
 
     fun isVolumeDownEnabled(context: Context): Boolean {
         return isPowerTripleTapEnabled(context)
+    }
+
+    fun getCaptureMode(context: Context): CaptureMode {
+        val modeStr = getPrefs(context).getString(KEY_CAPTURE_MODE, CaptureMode.STANDARD.name)
+        return try {
+            CaptureMode.valueOf(modeStr ?: CaptureMode.STANDARD.name)
+        } catch (e: Exception) {
+            CaptureMode.STANDARD
+        }
+    }
+
+    fun setCaptureMode(context: Context, mode: CaptureMode) {
+        getPrefs(context).edit().putString(KEY_CAPTURE_MODE, mode.name).apply()
+    }
+
+    fun isLongScreenshotDefault(context: Context): Boolean {
+        return getCaptureMode(context) == CaptureMode.LONG_SCREENSHOT
     }
 }
 

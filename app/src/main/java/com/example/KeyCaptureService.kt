@@ -59,6 +59,47 @@ class KeyCaptureService : AccessibilityService() {
         }
 
         /**
+         * Manual trigger for long screenshot capture.
+         */
+        fun triggerLongScreenshot(context: Context): Boolean {
+            val service = instance
+            if (service != null) {
+                service.performLongScreenCapture()
+                return true
+            } else {
+                // Direct in-app demo/testing fallback
+                val sampleBmp = LongScreenshotStitcher.generateSampleLongScreenshot(context)
+                ScreenshotHolder.bitmap = sampleBmp
+                ScreenshotHolder.isLongScreenshot = true
+                ScreenshotHolder.pageCount = 3
+
+                val intent = Intent(context, CropOverlayActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                    )
+                }
+                context.startActivity(intent)
+                return true
+            }
+        }
+
+        /**
+         * Triggers capture based on the configured or specified capture mode.
+         */
+        fun triggerCapture(
+            context: Context,
+            mode: TriggerPreferenceManager.CaptureMode = TriggerPreferenceManager.getCaptureMode(context)
+        ): Boolean {
+            return if (mode == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT) {
+                triggerLongScreenshot(context)
+            } else {
+                triggerScreenshot(context)
+            }
+        }
+
+        /**
          * Updates the trigger mode and immediately refreshes the running service overlay state.
          */
         fun updateTriggerMode(context: Context, mode: TriggerPreferenceManager.TriggerMode) {
@@ -153,7 +194,11 @@ class KeyCaptureService : AccessibilityService() {
                     isKillSwitchTriggered = true
                     Log.d(TAG, "Triple-tap Power button detected! Triggering screenshot capture.")
                     vibrateFeedback()
-                    performScreenCapture()
+                    if (TriggerPreferenceManager.getCaptureMode(this) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT) {
+                        performLongScreenCapture()
+                    } else {
+                        performScreenCapture()
+                    }
                     return true // Consume 3rd press
                 }
             } else if (event.action == KeyEvent.ACTION_UP && isKillSwitchTriggered) {
@@ -251,6 +296,8 @@ class KeyCaptureService : AccessibilityService() {
 
             // 1. Immediately store in memory so CropOverlayActivity renders with 0ms delay
             ScreenshotHolder.bitmap = softwareBitmap
+            ScreenshotHolder.isLongScreenshot = false
+            ScreenshotHolder.pageCount = 1
 
             // 2. Persist to cache file in background thread for sharing / fallback
             Thread {
@@ -269,6 +316,129 @@ class KeyCaptureService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to process screenshot", e)
         }
+    }
+
+    /**
+     * Performs continuous scrolling screenshot capture using programmatic gestures and
+     * high-speed hardware buffer stitching.
+     */
+    fun performLongScreenCapture(maxPages: Int = 3) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Log.d(TAG, "Initiating long screenshot capture with max $maxPages pages")
+            touchOverlayManager?.setOverlayVisibility(false)
+
+            val capturedBitmaps = mutableListOf<Bitmap>()
+            val dm = resources.displayMetrics
+            val screenW = dm.widthPixels.toFloat()
+            val screenH = dm.heightPixels.toFloat()
+            val statusBarH = (28 * dm.density).toInt()
+            val navBarH = (24 * dm.density).toInt()
+
+            fun captureStep(pageIndex: Int) {
+                mainHandler.postDelayed({
+                    takeScreenshot(
+                        Display.DEFAULT_DISPLAY,
+                        mainExecutor,
+                        object : TakeScreenshotCallback {
+                            override fun onSuccess(screenshotResult: ScreenshotResult) {
+                                val hwBuffer = screenshotResult.hardwareBuffer
+                                val colorSpace = screenshotResult.colorSpace
+                                val hwBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace)
+                                hwBuffer.close()
+
+                                val swBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                                hwBitmap?.recycle()
+
+                                if (swBitmap != null) {
+                                    capturedBitmaps.add(swBitmap)
+                                }
+
+                                if (capturedBitmaps.size < maxPages) {
+                                    // Scroll down by swiping up programmatically
+                                    val swipePath = android.graphics.Path().apply {
+                                        moveTo(screenW / 2f, screenH * 0.72f)
+                                        lineTo(screenW / 2f, screenH * 0.28f)
+                                    }
+                                    val gesture = android.accessibilityservice.GestureDescription.Builder()
+                                        .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(swipePath, 0, 260))
+                                        .build()
+
+                                    val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
+                                        override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
+                                            // Wait 400ms for inertial scrolling to settle
+                                            mainHandler.postDelayed({
+                                                captureStep(pageIndex + 1)
+                                            }, 400L)
+                                        }
+
+                                        override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
+                                            finishLongCapture(capturedBitmaps, statusBarH, navBarH)
+                                        }
+                                    }, mainHandler)
+
+                                    if (!dispatched) {
+                                        finishLongCapture(capturedBitmaps, statusBarH, navBarH)
+                                    }
+                                } else {
+                                    finishLongCapture(capturedBitmaps, statusBarH, navBarH)
+                                }
+                            }
+
+                            override fun onFailure(errorCode: Int) {
+                                Log.e(TAG, "takeScreenshot failed during long capture: $errorCode")
+                                if (capturedBitmaps.isNotEmpty()) {
+                                    finishLongCapture(capturedBitmaps, statusBarH, navBarH)
+                                } else {
+                                    setOverlayVisibility(true)
+                                }
+                            }
+                        }
+                    )
+                }, if (pageIndex == 0) 80L else 120L)
+            }
+
+            captureStep(0)
+        } else {
+            generateAndLaunchFallbackLongScreenshot()
+        }
+    }
+
+    private fun finishLongCapture(capturedBitmaps: List<Bitmap>, statusBarH: Int, navBarH: Int) {
+        if (capturedBitmaps.isEmpty()) {
+            setOverlayVisibility(true)
+            return
+        }
+
+        try {
+            val stitchedBitmap = LongScreenshotStitcher.stitch(capturedBitmaps, statusBarH, navBarH)
+            ScreenshotHolder.bitmap = stitchedBitmap
+            ScreenshotHolder.isLongScreenshot = true
+            ScreenshotHolder.pageCount = capturedBitmaps.size
+
+            Thread {
+                try {
+                    val tempFile = File(cacheDir, TEMP_SCREENSHOT_FILE)
+                    FileOutputStream(tempFile).use { outStream ->
+                        stitchedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to asynchronously save long screenshot to disk", e)
+                }
+            }.start()
+
+            launchOverlayActivity()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stitch long screenshot", e)
+            setOverlayVisibility(true)
+        }
+    }
+
+    private fun generateAndLaunchFallbackLongScreenshot() {
+        val sampleBmp = LongScreenshotStitcher.generateSampleLongScreenshot(this)
+        ScreenshotHolder.bitmap = sampleBmp
+        ScreenshotHolder.isLongScreenshot = true
+        ScreenshotHolder.pageCount = 3
+        launchOverlayActivity()
     }
 
     private fun launchOverlayActivity() {
@@ -313,9 +483,18 @@ class KeyCaptureService : AccessibilityService() {
         if (touchOverlayManager == null) {
             touchOverlayManager = TouchOverlayManager(this).apply {
                 setTriggerCallback {
-                    Log.d(TAG, "3-finger downward swipe trigger detected via TouchOverlayManager")
+                    Log.d(TAG, "Screen capture trigger detected via TouchOverlayManager")
                     vibrateFeedback()
-                    performScreenCapture()
+                    if (TriggerPreferenceManager.getCaptureMode(this@KeyCaptureService) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT) {
+                        performLongScreenCapture()
+                    } else {
+                        performScreenCapture()
+                    }
+                }
+                setLongScreenshotCallback {
+                    Log.d(TAG, "Long screenshot gesture trigger detected via TouchOverlayManager")
+                    vibrateFeedback()
+                    performLongScreenCapture()
                 }
             }
         }

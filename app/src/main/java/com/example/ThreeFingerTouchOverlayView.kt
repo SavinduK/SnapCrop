@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.util.Log
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -40,6 +41,7 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
     }
 
     var onThreeFingerSwipeTriggered: (() -> Unit)? = null
+    var onLongScreenshotTriggered: (() -> Unit)? = null
 
     // Multi-touch tracking
     private var startY = 0f
@@ -60,7 +62,21 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
     private var initialWindowY = 0
     private var isDraggingPill = false
     private var isPressedState = false
+    private var hasTriggeredLongPress = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+
+    private val longPressRunnable = Runnable {
+        if (!isDraggingPill && isPressedState) {
+            hasTriggeredLongPress = true
+            isPressedState = false
+            invalidate()
+            try {
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            } catch (_: Exception) {}
+            Log.d(TAG, "Floating edge bar long-pressed! Triggering Long Screenshot directly.")
+            onLongScreenshotTriggered?.invoke()
+        }
+    }
 
     // Reusable path for the edge-docked rounded bar
     private val barPath = Path()
@@ -166,10 +182,11 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
         val notchTop = (h - notchH) / 2f
         notchRect.set(notchLeft, notchTop, notchLeft + notchW, notchTop + notchH)
 
-        gripPaint.color = if (isPressedState) {
-            Color.argb(140, 71, 85, 105) // Slate 600 tone
+        val isLongMode = TriggerPreferenceManager.getCaptureMode(context) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT
+        gripPaint.color = if (isLongMode) {
+            if (isPressedState) Color.argb(220, 2, 132, 199) else Color.argb(170, 56, 189, 248)
         } else {
-            Color.argb(85, 100, 116, 139) // Subtle slate tone
+            if (isPressedState) Color.argb(140, 71, 85, 105) else Color.argb(85, 100, 116, 139)
         }
         canvas.drawRoundRect(notchRect, notchW / 2f, notchW / 2f, gripPaint)
     }
@@ -190,6 +207,9 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
                 initialWindowY = lp.y
                 isDraggingPill = false
                 isPressedState = true
+                hasTriggeredLongPress = false
+                removeCallbacks(longPressRunnable)
+                postDelayed(longPressRunnable, 500)
                 invalidate()
                 return true
             }
@@ -198,6 +218,7 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
                 val deltaX = event.rawX - downRawX
                 if (!isDraggingPill && Math.hypot(deltaX.toDouble(), deltaY.toDouble()) > touchSlop) {
                     isDraggingPill = true
+                    removeCallbacks(longPressRunnable)
                 }
                 if (isDraggingPill) {
                     val displayMetrics = resources.displayMetrics
@@ -214,18 +235,22 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_UP -> {
+                removeCallbacks(longPressRunnable)
                 isPressedState = false
                 invalidate()
-                if (!isDraggingPill) {
+                if (!isDraggingPill && !hasTriggeredLongPress) {
                     Log.d(TAG, "Floating edge bar tapped. Triggering screenshot action.")
                     onThreeFingerSwipeTriggered?.invoke()
                 }
                 isDraggingPill = false
+                hasTriggeredLongPress = false
                 return true
             }
             MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPressRunnable)
                 isPressedState = false
                 isDraggingPill = false
+                hasTriggeredLongPress = false
                 invalidate()
                 return true
             }

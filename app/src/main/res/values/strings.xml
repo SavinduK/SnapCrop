@@ -121,5 +121,29 @@
     <string name="ocr_cts_words_selected">%1$d selected</string>
     <string name="ocr_cts_all_selected">All selected</string>
     <string name="ocr_cts_no_selection">Tap words to select</string>
+
+    <!-- Long Screenshot (Scroll Capture) -->
+    <string name="section_capture_mode">Screen Capture Mode</string>
+    <string name="capture_mode_standard_title">Quick Crop (Standard)</string>
+    <string name="capture_mode_standard_desc">Capture visible screen area for instant cropping, AI, and sharing</string>
+    <string name="capture_mode_long_title">Long Screenshot (Scroll Capture)</string>
+    <string name="capture_mode_long_desc">Automatically scroll and capture full web pages, chats, and documents</string>
+
+    <string name="feature_long_screenshot_title">Long Screenshot</string>
+    <string name="feature_long_screenshot_desc">Enable scroll capture in the crop overlay to capture full web pages and long articles</string>
+
+    <string name="feature_long_card_title">Long Screenshot</string>
+    <string name="feature_long_card_desc">Scroll and stitch full-page articles, long chats, or documents into one seamless image.</string>
+
+    <string name="btn_test_standard_capture">Test Quick Crop</string>
+    <string name="btn_test_long_capture">Test Long Screenshot</string>
+
+    <string name="crop_btn_long_screenshot">Scroll Capture</string>
+    <string name="crop_btn_scroll_more">Capture More</string>
+    <string name="crop_btn_select_full_long">Select Full Long Screenshot</string>
+    <string name="crop_btn_preview_long">Preview Full Size</string>
+    <string name="toast_long_screenshot_ready">Long screenshot captured (%1$d × %2$d px)</string>
+    <string name="toast_scrolled_and_captured">Added page %1$d to long screenshot</string>
+    <string name="long_screenshot_badge">Long Screenshot • %1$d × %2$d px</string>
 </resources>
 

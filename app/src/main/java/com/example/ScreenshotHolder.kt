@@ -14,7 +14,15 @@ object ScreenshotHolder {
     @Volatile
     var bitmap: Bitmap? = null
 
+    @Volatile
+    var isLongScreenshot: Boolean = false
+
+    @Volatile
+    var pageCount: Int = 1
+
     fun clear() {
         bitmap = null
+        isLongScreenshot = false
+        pageCount = 1
     }
 }

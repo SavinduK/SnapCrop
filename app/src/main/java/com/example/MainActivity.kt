@@ -17,6 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -75,8 +77,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -131,6 +138,10 @@ fun SnapCropMainScreen() {
         mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
     }
 
+    var currentCaptureMode by remember {
+        mutableStateOf(TriggerPreferenceManager.getCaptureMode(context))
+    }
+
     var currentAiModel by remember {
         mutableStateOf(AiModelPreferenceManager.getSelectedModel(context))
     }
@@ -143,6 +154,10 @@ fun SnapCropMainScreen() {
         mutableStateOf(CropFeaturePreferenceManager.isBatchSelectEnabled(context))
     }
 
+    var isLongScreenshotEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
+    }
+
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -150,9 +165,11 @@ fun SnapCropMainScreen() {
                 isAccessibilityEnabled = checkAccessibilityEnabled(context)
                 isBatteryIgnored = checkBatteryIgnored(context)
                 currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
+                currentCaptureMode = TriggerPreferenceManager.getCaptureMode(context)
                 currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
                 isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
+                isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -188,6 +205,44 @@ fun SnapCropMainScreen() {
             StatusHeroBanner(
                 isReady = isAllReady,
                 onEnableClick = { openAccessibilitySettings(context) }
+            )
+
+            // Section: Screen Capture Mode (Quick Crop vs Long Screenshot)
+            Text(
+                text = stringResource(R.string.section_capture_mode),
+                color = TextPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+            )
+
+            CaptureTriggerCard(
+                icon = Icons.Default.Crop,
+                iconTint = CyanPrimary,
+                title = stringResource(R.string.capture_mode_standard_title),
+                description = stringResource(R.string.capture_mode_standard_desc),
+                isSelected = currentCaptureMode == TriggerPreferenceManager.CaptureMode.STANDARD,
+                onSelect = {
+                    currentCaptureMode = TriggerPreferenceManager.CaptureMode.STANDARD
+                    TriggerPreferenceManager.setCaptureMode(context, TriggerPreferenceManager.CaptureMode.STANDARD)
+                },
+                testTag = "capture_mode_standard"
+            )
+
+            CaptureTriggerCard(
+                icon = Icons.Default.VerticalAlignBottom,
+                customIcon = { tint ->
+                    ScrollCaptureIcon(tint = tint, modifier = Modifier.size(24.dp))
+                },
+                iconTint = Color(0xFF38BDF8),
+                title = stringResource(R.string.capture_mode_long_title),
+                description = stringResource(R.string.capture_mode_long_desc),
+                isSelected = currentCaptureMode == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT,
+                onSelect = {
+                    currentCaptureMode = TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT
+                    TriggerPreferenceManager.setCaptureMode(context, TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT)
+                },
+                testTag = "capture_mode_long"
             )
 
             // Section: How to Capture (Triggers)
@@ -232,6 +287,22 @@ fun SnapCropMainScreen() {
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+            )
+
+            // Toggle: Long Screenshot / Scroll Capture Mode
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_long_screenshot_title),
+                description = stringResource(R.string.feature_long_screenshot_desc),
+                customIcon = { tint ->
+                    ScrollCaptureIcon(tint = tint, modifier = Modifier.size(22.dp))
+                },
+                iconTint = Color(0xFF38BDF8),
+                isChecked = isLongScreenshotEnabled,
+                onCheckedChange = { enabled ->
+                    isLongScreenshotEnabled = enabled
+                    CropFeaturePreferenceManager.setLongScreenshotEnabled(context, enabled)
+                },
+                testTag = "toggle_long_screenshot"
             )
 
             // Toggle: Share to AI Mode
@@ -517,7 +588,8 @@ private fun StatusHeroBanner(
 
 @Composable
 private fun CaptureTriggerCard(
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    customIcon: (@Composable (tint: Color) -> Unit)? = null,
     iconTint: Color,
     title: String,
     description: String,
@@ -553,12 +625,16 @@ private fun CaptureTriggerCard(
                     .background(if (isSelected) iconTint.copy(alpha = 0.2f) else iconTint.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isSelected) iconTint else iconTint.copy(alpha = 0.5f),
-                    modifier = Modifier.size(24.dp)
-                )
+                if (customIcon != null) {
+                    customIcon(if (isSelected) iconTint else iconTint.copy(alpha = 0.5f))
+                } else if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isSelected) iconTint else iconTint.copy(alpha = 0.5f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -594,6 +670,14 @@ private fun CaptureTriggerCard(
 private fun FeaturesGrid() {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         FeatureItemCard(
+            customIcon = { tint ->
+                ScrollCaptureIcon(tint = tint, modifier = Modifier.size(20.dp))
+            },
+            iconTint = Color(0xFF38BDF8),
+            title = stringResource(R.string.feature_long_card_title),
+            description = stringResource(R.string.feature_long_card_desc)
+        )
+        FeatureItemCard(
             icon = Icons.Default.TextFields,
             iconTint = CyanAccent,
             title = stringResource(R.string.feature_ocr_title),
@@ -622,7 +706,8 @@ private fun FeaturesGrid() {
 
 @Composable
 private fun FeatureItemCard(
-    icon: ImageVector,
+    icon: ImageVector? = null,
+    customIcon: (@Composable (tint: Color) -> Unit)? = null,
     iconTint: Color,
     title: String,
     description: String
@@ -646,12 +731,16 @@ private fun FeatureItemCard(
                     .background(iconTint.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (customIcon != null) {
+                    customIcon(iconTint)
+                } else if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
@@ -670,6 +759,81 @@ private fun FeatureItemCard(
                 )
             }
         }
+    }
+}
+
+/**
+ * Custom vector canvas icon representing Long Screenshot / Scroll Capture.
+ */
+@Composable
+fun ScrollCaptureIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color(0xFF38BDF8)
+) {
+    ComposeCanvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = 1.8.dp.toPx()
+
+        // Page rectangle
+        val corner = 3.dp.toPx()
+        val rectW = w * 0.65f
+        val rectH = h * 0.68f
+        val left = (w - rectW) / 2f
+        val top = h * 0.06f
+
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(left, top),
+            size = Size(rectW, rectH),
+            cornerRadius = CornerRadius(corner, corner),
+            style = Stroke(width = stroke)
+        )
+
+        // Content lines
+        val lineMargin = left + 3.5.dp.toPx()
+        val lineW = rectW - 7.dp.toPx()
+        drawLine(
+            color = tint.copy(alpha = 0.75f),
+            start = Offset(lineMargin, top + 5.dp.toPx()),
+            end = Offset(lineMargin + lineW * 0.75f, top + 5.dp.toPx()),
+            strokeWidth = stroke * 0.9f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint.copy(alpha = 0.5f),
+            start = Offset(lineMargin, top + 9.5.dp.toPx()),
+            end = Offset(lineMargin + lineW, top + 9.5.dp.toPx()),
+            strokeWidth = stroke * 0.9f,
+            cap = StrokeCap.Round
+        )
+
+        // Downward arrow
+        val arrowY = top + rectH + 1.5.dp.toPx()
+        val arrowTip = h * 0.96f
+        val arrowMidX = w / 2f
+        drawLine(
+            color = tint,
+            start = Offset(arrowMidX, arrowY),
+            end = Offset(arrowMidX, arrowTip),
+            strokeWidth = stroke * 1.1f,
+            cap = StrokeCap.Round
+        )
+        val headSize = 3.5.dp.toPx()
+        drawLine(
+            color = tint,
+            start = Offset(arrowMidX - headSize, arrowTip - headSize),
+            end = Offset(arrowMidX, arrowTip),
+            strokeWidth = stroke * 1.1f,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(arrowMidX + headSize, arrowTip - headSize),
+            end = Offset(arrowMidX, arrowTip),
+            strokeWidth = stroke * 1.1f,
+            cap = StrokeCap.Round
+        )
     }
 }
 

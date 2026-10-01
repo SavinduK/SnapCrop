@@ -36,6 +36,7 @@ class TouchOverlayManager(private val context: Context) {
         private set
     private var isOverlayAttached = false
     private var onTriggerAction: (() -> Unit)? = null
+    private var onLongScreenshotAction: (() -> Unit)? = null
 
     init {
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -44,6 +45,11 @@ class TouchOverlayManager(private val context: Context) {
     fun setTriggerCallback(callback: () -> Unit) {
         onTriggerAction = callback
         overlayView?.onThreeFingerSwipeTriggered = callback
+    }
+
+    fun setLongScreenshotCallback(callback: () -> Unit) {
+        onLongScreenshotAction = callback
+        overlayView?.onLongScreenshotTriggered = callback
     }
 
     /**
@@ -112,6 +118,7 @@ class TouchOverlayManager(private val context: Context) {
             val inflater = LayoutInflater.from(context)
             val view = inflater.inflate(R.layout.touch_listener_overlay, null) as ThreeFingerTouchOverlayView
             view.onThreeFingerSwipeTriggered = onTriggerAction
+            view.onLongScreenshotTriggered = onLongScreenshotAction
             view.enableFloatingPillMode(wm)
 
             // Use non-blocking FLAG_NOT_TOUCH_MODAL layout flags with WRAP_CONTENT
