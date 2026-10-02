@@ -138,10 +138,6 @@ fun SnapCropMainScreen() {
         mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
     }
 
-    var currentCaptureMode by remember {
-        mutableStateOf(TriggerPreferenceManager.getCaptureMode(context))
-    }
-
     var currentAiModel by remember {
         mutableStateOf(AiModelPreferenceManager.getSelectedModel(context))
     }
@@ -154,10 +150,6 @@ fun SnapCropMainScreen() {
         mutableStateOf(CropFeaturePreferenceManager.isBatchSelectEnabled(context))
     }
 
-    var isLongScreenshotEnabled by remember {
-        mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
-    }
-
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -165,11 +157,9 @@ fun SnapCropMainScreen() {
                 isAccessibilityEnabled = checkAccessibilityEnabled(context)
                 isBatteryIgnored = checkBatteryIgnored(context)
                 currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
-                currentCaptureMode = TriggerPreferenceManager.getCaptureMode(context)
                 currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
                 isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
-                isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -205,44 +195,6 @@ fun SnapCropMainScreen() {
             StatusHeroBanner(
                 isReady = isAllReady,
                 onEnableClick = { openAccessibilitySettings(context) }
-            )
-
-            // Section: Screen Capture Mode (Quick Crop vs Long Screenshot)
-            Text(
-                text = stringResource(R.string.section_capture_mode),
-                color = TextPrimary,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-            )
-
-            CaptureTriggerCard(
-                icon = Icons.Default.Crop,
-                iconTint = CyanPrimary,
-                title = stringResource(R.string.capture_mode_standard_title),
-                description = stringResource(R.string.capture_mode_standard_desc),
-                isSelected = currentCaptureMode == TriggerPreferenceManager.CaptureMode.STANDARD,
-                onSelect = {
-                    currentCaptureMode = TriggerPreferenceManager.CaptureMode.STANDARD
-                    TriggerPreferenceManager.setCaptureMode(context, TriggerPreferenceManager.CaptureMode.STANDARD)
-                },
-                testTag = "capture_mode_standard"
-            )
-
-            CaptureTriggerCard(
-                icon = Icons.Default.VerticalAlignBottom,
-                customIcon = { tint ->
-                    ScrollCaptureIcon(tint = tint, modifier = Modifier.size(24.dp))
-                },
-                iconTint = Color(0xFF38BDF8),
-                title = stringResource(R.string.capture_mode_long_title),
-                description = stringResource(R.string.capture_mode_long_desc),
-                isSelected = currentCaptureMode == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT,
-                onSelect = {
-                    currentCaptureMode = TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT
-                    TriggerPreferenceManager.setCaptureMode(context, TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT)
-                },
-                testTag = "capture_mode_long"
             )
 
             // Section: How to Capture (Triggers)
@@ -287,22 +239,6 @@ fun SnapCropMainScreen() {
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 4.dp, top = 6.dp)
-            )
-
-            // Toggle: Long Screenshot / Scroll Capture Mode
-            ToggleOptionCard(
-                title = stringResource(R.string.feature_long_screenshot_title),
-                description = stringResource(R.string.feature_long_screenshot_desc),
-                customIcon = { tint ->
-                    ScrollCaptureIcon(tint = tint, modifier = Modifier.size(22.dp))
-                },
-                iconTint = Color(0xFF38BDF8),
-                isChecked = isLongScreenshotEnabled,
-                onCheckedChange = { enabled ->
-                    isLongScreenshotEnabled = enabled
-                    CropFeaturePreferenceManager.setLongScreenshotEnabled(context, enabled)
-                },
-                testTag = "toggle_long_screenshot"
             )
 
             // Toggle: Share to AI Mode

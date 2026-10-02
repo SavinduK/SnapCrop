@@ -194,11 +194,7 @@ class KeyCaptureService : AccessibilityService() {
                     isKillSwitchTriggered = true
                     Log.d(TAG, "Triple-tap Power button detected! Triggering screenshot capture.")
                     vibrateFeedback()
-                    if (TriggerPreferenceManager.getCaptureMode(this) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT) {
-                        performLongScreenCapture()
-                    } else {
-                        performScreenCapture()
-                    }
+                    performScreenCapture()
                     return true // Consume 3rd press
                 }
             } else if (event.action == KeyEvent.ACTION_UP && isKillSwitchTriggered) {
@@ -298,6 +294,7 @@ class KeyCaptureService : AccessibilityService() {
             ScreenshotHolder.bitmap = softwareBitmap
             ScreenshotHolder.isLongScreenshot = false
             ScreenshotHolder.pageCount = 1
+            ScreenshotHolder.shouldSelectAll = false
 
             // 2. Persist to cache file in background thread for sharing / fallback
             Thread {
@@ -354,21 +351,21 @@ class KeyCaptureService : AccessibilityService() {
                                 }
 
                                 if (capturedBitmaps.size < maxPages) {
-                                    // Scroll down by swiping up programmatically
+                                    // Smooth scroll down by swiping up programmatically (320ms stroke)
                                     val swipePath = android.graphics.Path().apply {
                                         moveTo(screenW / 2f, screenH * 0.72f)
                                         lineTo(screenW / 2f, screenH * 0.28f)
                                     }
                                     val gesture = android.accessibilityservice.GestureDescription.Builder()
-                                        .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(swipePath, 0, 260))
+                                        .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(swipePath, 0, 300))
                                         .build()
 
                                     val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
                                         override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                                            // Wait 400ms for inertial scrolling to settle
+                                            // Wait 600ms for inertial scrolling and page rendering to settle cleanly
                                             mainHandler.postDelayed({
                                                 captureStep(pageIndex + 1)
-                                            }, 400L)
+                                            }, 600L)
                                         }
 
                                         override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
@@ -394,7 +391,7 @@ class KeyCaptureService : AccessibilityService() {
                             }
                         }
                     )
-                }, if (pageIndex == 0) 80L else 120L)
+                }, if (pageIndex == 0) 320L else 120L)
             }
 
             captureStep(0)
@@ -414,6 +411,7 @@ class KeyCaptureService : AccessibilityService() {
             ScreenshotHolder.bitmap = stitchedBitmap
             ScreenshotHolder.isLongScreenshot = true
             ScreenshotHolder.pageCount = capturedBitmaps.size
+            ScreenshotHolder.shouldSelectAll = true
 
             Thread {
                 try {
@@ -438,6 +436,7 @@ class KeyCaptureService : AccessibilityService() {
         ScreenshotHolder.bitmap = sampleBmp
         ScreenshotHolder.isLongScreenshot = true
         ScreenshotHolder.pageCount = 3
+        ScreenshotHolder.shouldSelectAll = true
         launchOverlayActivity()
     }
 
@@ -485,11 +484,7 @@ class KeyCaptureService : AccessibilityService() {
                 setTriggerCallback {
                     Log.d(TAG, "Screen capture trigger detected via TouchOverlayManager")
                     vibrateFeedback()
-                    if (TriggerPreferenceManager.getCaptureMode(this@KeyCaptureService) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT) {
-                        performLongScreenCapture()
-                    } else {
-                        performScreenCapture()
-                    }
+                    performScreenCapture()
                 }
                 setLongScreenshotCallback {
                     Log.d(TAG, "Long screenshot gesture trigger detected via TouchOverlayManager")

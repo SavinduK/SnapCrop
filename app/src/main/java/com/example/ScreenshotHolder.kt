@@ -20,9 +20,13 @@ object ScreenshotHolder {
     @Volatile
     var pageCount: Int = 1
 
+    @Volatile
+    var shouldSelectAll: Boolean = false
+
     fun clear() {
         bitmap = null
         isLongScreenshot = false
         pageCount = 1
+        shouldSelectAll = false
     }
 }

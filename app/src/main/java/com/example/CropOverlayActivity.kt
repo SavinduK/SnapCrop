@@ -85,6 +85,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -237,27 +238,35 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     private fun handleExtendLongScreenshot() {
-        val current = loadedBitmap ?: return
+        selectionViewRef?.selectAll()
         val dm = resources.displayMetrics
-        val statusBarH = (28 * dm.density).toInt()
-        val navBarH = (24 * dm.density).toInt()
 
-        val nextSegment = LongScreenshotStitcher.generateSampleLongScreenshot(this)
-        val stitched = LongScreenshotStitcher.appendSegment(current, nextSegment, statusBarH, navBarH)
-        loadedBitmap = stitched
-        ScreenshotHolder.bitmap = stitched
-        ScreenshotHolder.isLongScreenshot = true
-        ScreenshotHolder.pageCount = ScreenshotHolder.pageCount + 1
+        if (KeyCaptureService.isServiceRunning()) {
+            Toast.makeText(this, "Capturing long screenshot…", Toast.LENGTH_SHORT).show()
+            KeyCaptureService.instance?.performLongScreenCapture()
+            finish()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0)
+            } else {
+                @Suppress("DEPRECATION")
+                overridePendingTransition(0, 0)
+            }
+        } else {
+            val seamlessLong = LongScreenshotStitcher.generateSampleLongScreenshot(this)
 
-        selectionViewRef?.screenshotBitmap = stitched
-        selectionViewRef?.invalidate()
-        window.setBackgroundDrawable(BitmapDrawable(resources, stitched))
+            loadedBitmap = seamlessLong
+            ScreenshotHolder.bitmap = seamlessLong
+            ScreenshotHolder.isLongScreenshot = true
+            ScreenshotHolder.pageCount = 3
+            ScreenshotHolder.shouldSelectAll = true
 
-        Toast.makeText(
-            this,
-            getString(R.string.toast_scrolled_and_captured, ScreenshotHolder.pageCount),
-            Toast.LENGTH_SHORT
-        ).show()
+            selectionViewRef?.screenshotBitmap = seamlessLong
+            selectionViewRef?.selectAll()
+            selectionViewRef?.invalidate()
+            window.setBackgroundDrawable(BitmapDrawable(resources, seamlessLong))
+
+            Toast.makeText(this, "Seamless long screenshot ready. Tap Copy or Share below.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun handleSaveFullBitmap(bitmap: Bitmap) {
@@ -1129,7 +1138,7 @@ private fun CropOverlayContent(
 
     // Long Screenshot State
     var showFullSizeViewer by remember { mutableStateOf(false) }
-    val isLongScreenshot = ScreenshotHolder.isLongScreenshot || (screenshot?.let { it.height > it.width * 1.5 } == true)
+    val isLongScreenshot = ScreenshotHolder.isLongScreenshot
 
     // Circle to Search OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
@@ -1144,6 +1153,14 @@ private fun CropOverlayContent(
         val density = LocalDensity.current
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
+
+        // Auto-select whole screen ONLY when explicitly requested (e.g. Long Screenshot button selected)
+        LaunchedEffect(screenshot) {
+            if (ScreenshotHolder.shouldSelectAll) {
+                ScreenshotHolder.shouldSelectAll = false
+                activeSelectionView?.selectAll()
+            }
+        }
 
         // 1. Custom Interactive Selection View
         AndroidView(
@@ -1163,10 +1180,18 @@ private fun CropOverlayContent(
                     }
                     onViewAttached(this)
                     activeSelectionView = this
+                    if (ScreenshotHolder.shouldSelectAll) {
+                        ScreenshotHolder.shouldSelectAll = false
+                        selectAll()
+                    }
                 }
             },
             update = { view ->
                 view.screenshotBitmap = screenshot
+                if (ScreenshotHolder.shouldSelectAll) {
+                    ScreenshotHolder.shouldSelectAll = false
+                    view.selectAll()
+                }
             },
             modifier = Modifier.fillMaxSize()
         )
@@ -1194,14 +1219,14 @@ private fun CropOverlayContent(
             )
         }
 
-        // 2. Top-Bar Utility Header: Cancel Button, Batch Toggle & Scroll More
+        // 2. Top-Bar Utility Header: Action Buttons on Top Right
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .padding(top = 16.dp, start = 16.dp, end = 16.dp)
         ) {
-            // Top Actions Row: Scroll More, Collapsible Batch Toggle & Cancel/Close (✕) Button
+            // Top Right Actions Row: Batch Toggle (if active), Long Screenshot (Icon only), Close (✕)
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1209,39 +1234,7 @@ private fun CropOverlayContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Scroll More / Capture More (⤓) Button
-                if (isLongScreenshotEnabled) {
-                    Surface(
-                        onClick = onExtendLongScreenshotRequested,
-                        shape = RoundedCornerShape(percent = 50),
-                        color = Color(0xD90284C7),
-                        border = BorderStroke(1.2.dp, Color(0x8038BDF8)),
-                        tonalElevation = 4.dp,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier
-                            .height(40.dp)
-                            .testTag("btn_scroll_more_top")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            ScrollCaptureIcon(
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.crop_btn_scroll_more),
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-
-                // Collapsible Batch Button left to the top close button
+                // Collapsible Batch Button (if batch count > 0)
                 if (isBatchModeEnabled && batchCount > 0) {
                     Surface(
                         onClick = { isBatchMenuExpanded = !isBatchMenuExpanded },
@@ -1276,13 +1269,33 @@ private fun CropOverlayContent(
                     }
                 }
 
-                // Cancel / Close (✕) Button
+                // Long Screenshot Button (Icon only)
+                IconButton(
+                    onClick = {
+                        activeSelectionView?.selectAll()
+                        onExtendLongScreenshotRequested()
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD90284C7))
+                        .border(1.2.dp, Color(0x8038BDF8), CircleShape)
+                        .testTag("btn_long_screenshot_top")
+                ) {
+                    ScrollCaptureIcon(
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Close (✕) Button
                 IconButton(
                     onClick = onCancelRequested,
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
                         .background(Color(0xD90F172A))
+                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
                         .testTag("btn_cancel_overlay")
                 ) {
                     Icon(
@@ -1291,64 +1304,6 @@ private fun CropOverlayContent(
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
-                }
-            }
-        }
-
-        // 2c. Long Screenshot Info & Quick Action Banner (at top center)
-        if (isLongScreenshot && !showFullTextSheet && !showFullSizeViewer) {
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = Color(0xF20F172A),
-                border = BorderStroke(1.2.dp, Color(0xFF38BDF8)),
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 16.dp)
-                    .testTag("badge_long_screenshot")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
-                    val bmpW = screenshot?.width ?: 1080
-                    val bmpH = screenshot?.height ?: 3600
-                    Text(
-                        text = stringResource(R.string.long_screenshot_badge, bmpW, bmpH),
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Surface(
-                        onClick = { activeSelectionView?.selectAll() },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0x3338BDF8)
-                    ) {
-                        Text(
-                            text = "Select All",
-                            color = Color(0xFF38BDF8),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
-                    Surface(
-                        onClick = { showFullSizeViewer = true },
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0x33FFFFFF)
-                    ) {
-                        Text(
-                            text = "Preview",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
                 }
             }
         }
@@ -1383,29 +1338,6 @@ private fun CropOverlayContent(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium
                     )
-
-                    if (isLongScreenshotEnabled) {
-                        Surface(
-                            onClick = onExtendLongScreenshotRequested,
-                            shape = RoundedCornerShape(percent = 50),
-                            color = Color(0x3338BDF8),
-                            border = BorderStroke(1.dp, Color(0x8038BDF8))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
-                                Text(
-                                    text = stringResource(R.string.crop_btn_scroll_more),
-                                    color = Color(0xFF38BDF8),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1527,7 +1459,7 @@ private fun CropOverlayContent(
         if (hasValidSelection && currentRect != null && !showFullTextSheet) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val activeButtonsCount = 3 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
+            val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
             val estimatedToolbarWidthDp = if (isOcrActive) 330.dp else (16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1)))
             val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
             val topSafePx = with(density) { 80.dp.toPx() }
@@ -1760,18 +1692,6 @@ private fun CropOverlayContent(
                                 testTag = "btn_save_crop"
                             ) {
                                 SaveToGalleryIcon(tint = Color.White)
-                            }
-
-                            // 7. Scroll More (Capture More) Button
-                            if (isLongScreenshotEnabled) {
-                                CropActionCircleButton(
-                                    onClick = onExtendLongScreenshotRequested,
-                                    contentDescription = stringResource(R.string.crop_btn_scroll_more),
-                                    testTag = "btn_scroll_more_crop",
-                                    backgroundColor = Color(0x330284C7)
-                                ) {
-                                    ScrollCaptureIcon(tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
-                                }
                             }
                         }
                     }

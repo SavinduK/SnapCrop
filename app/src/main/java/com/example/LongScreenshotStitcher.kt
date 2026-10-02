@@ -10,27 +10,298 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.util.Log
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
  * LongScreenshotStitcher
  *
- * Provides high-performance vertical image stitching for multi-page scroll capture.
- * Stitches consecutive screenshot viewports seamlessly by trimming status bar and navigation
- * bar overlays from intermediate frames, preserving top header and bottom footer intact.
- * Also generates realistic multi-section mock long screenshots for direct in-app testing.
+ * Provides high-performance, pixel-perfect vertical image stitching for multi-page scroll capture.
+ * Accurately calculates vertical displacement between consecutive viewports using normalized
+ * pixel difference matching.
+ * Seamlessly connects new scrolled content while strictly excluding duplicate status bars,
+ * browser URL bars, headers, and navigation bars from intermediate slices.
  */
 object LongScreenshotStitcher {
 
     private const val TAG = "LongScreenshotStitcher"
 
     /**
-     * Stitches an ordered list of screenshot bitmaps into a single continuous long bitmap.
+     * Detects the bottom boundary of any fixed top bars (system status bar, browser URL bar, app headers)
+     * that remain unchanged between two frames during scrolling.
+     */
+    fun detectFixedTopBarHeight(
+        prev: Bitmap,
+        curr: Bitmap,
+        statusBarHeightPx: Int = 0
+    ): Int {
+        val width = prev.width
+        val height = prev.height
+        val maxSearchY = (height * 0.35f).toInt().coerceAtLeast(statusBarHeightPx + 40)
+        val minHeaderY = statusBarHeightPx.coerceAtLeast(60)
+
+        val sampleX = mutableListOf<Int>()
+        val stepX = (width / 30).coerceAtLeast(8)
+        for (x in stepX until width - stepX step stepX) {
+            sampleX.add(x)
+        }
+
+        var detectedHeaderBottom = minHeaderY
+
+        // Scan rows downwards from minHeaderY
+        var consecutiveMismatch = 0
+        for (y in 0..maxSearchY step 2) {
+            var diffSum = 0L
+            var count = 0
+            for (x in sampleX) {
+                val p1 = prev.getPixel(x, y)
+                val p2 = curr.getPixel(x, y)
+                diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
+                        abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
+                        abs((p1 and 0xFF) - (p2 and 0xFF)))
+                count++
+            }
+            val avgDiff = if (count > 0) diffSum / count else 255L
+            if (avgDiff < 10L) {
+                // Row y is identical between prev and curr -> It is part of the fixed top header
+                detectedHeaderBottom = y + 2
+                consecutiveMismatch = 0
+            } else {
+                consecutiveMismatch++
+                if (consecutiveMismatch >= 8 && y > minHeaderY) {
+                    // Confirmed scrollable content began
+                    break
+                }
+            }
+        }
+
+        val finalHeaderHeight = detectedHeaderBottom.coerceIn(minHeaderY, maxSearchY)
+        Log.d(TAG, "Detected fixed top bar height: $finalHeaderHeight px (status bar: $statusBarHeightPx px)")
+        return finalHeaderHeight
+    }
+
+    /**
+     * Detects the top boundary of any fixed bottom bars (system navigation bar, bottom toolbars)
+     * that remain unchanged between two frames during scrolling.
+     */
+    fun detectFixedBottomBarTop(
+        prev: Bitmap,
+        curr: Bitmap,
+        navBarHeightPx: Int = 0
+    ): Int {
+        val width = prev.width
+        val height = prev.height
+        val maxFooterH = (height * 0.22f).toInt().coerceAtLeast(navBarHeightPx + 30)
+        val minSearchY = height - maxFooterH
+
+        val sampleX = mutableListOf<Int>()
+        val stepX = (width / 30).coerceAtLeast(8)
+        for (x in stepX until width - stepX step stepX) {
+            sampleX.add(x)
+        }
+
+        var detectedFooterTop = height - navBarHeightPx.coerceAtLeast(20)
+
+        // Scan rows upwards from bottom
+        var consecutiveMismatch = 0
+        for (y in (height - 2) downTo minSearchY step 2) {
+            var diffSum = 0L
+            var count = 0
+            for (x in sampleX) {
+                val p1 = prev.getPixel(x, y)
+                val p2 = curr.getPixel(x, y)
+                diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
+                        abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
+                        abs((p1 and 0xFF) - (p2 and 0xFF)))
+                count++
+            }
+            val avgDiff = if (count > 0) diffSum / count else 255L
+            if (avgDiff < 10L) {
+                detectedFooterTop = y
+                consecutiveMismatch = 0
+            } else {
+                consecutiveMismatch++
+                if (consecutiveMismatch >= 8 && y < height - navBarHeightPx) {
+                    break
+                }
+            }
+        }
+
+        val finalFooterTop = detectedFooterTop.coerceIn(minSearchY, height - 10)
+        Log.d(TAG, "Detected fixed bottom bar top: $finalFooterTop px (nav bar: $navBarHeightPx px)")
+        return finalFooterTop
+    }
+
+    /**
+     * Determines the exact vertical scroll displacement (delta in pixels) between two consecutive frames.
+     * Content at (x, y) in `curr` was at (x, y + delta) in `prev`.
+     *
+     * @return Positive vertical displacement in pixels, or 0 if no scroll occurred.
+     */
+    fun findVerticalOffset(
+        prev: Bitmap,
+        curr: Bitmap,
+        statusBarHeightPx: Int = 0,
+        navBarHeightPx: Int = 0
+    ): Int {
+        val width = prev.width
+        val height = prev.height
+        if (curr.width != width || curr.height != height) {
+            return (height * 0.45f).toInt()
+        }
+
+        val topFixedLimit = detectFixedTopBarHeight(prev, curr, statusBarHeightPx)
+        val bottomFixedLimit = detectFixedBottomBarTop(prev, curr, navBarHeightPx)
+
+        val scrollableHeight = bottomFixedLimit - topFixedLimit
+        if (scrollableHeight < 150) {
+            return (height * 0.40f).toInt()
+        }
+
+        // Horizontal sample columns (avoiding outer 8% to bypass scrollbars / edge indicators)
+        val sampleX = mutableListOf<Int>()
+        val xStart = (width * 0.10f).toInt()
+        val xEnd = (width * 0.90f).toInt()
+        val xStep = ((xEnd - xStart) / 45).coerceAtLeast(6)
+        for (x in xStart..xEnd step xStep) {
+            sampleX.add(x)
+        }
+
+        val bandHeight = (scrollableHeight * 0.09f).toInt().coerceIn(40, 100)
+
+        // Evaluate candidate bands inside the scrollable region and select the one with highest visual contrast
+        val candidateYs = listOf(
+            topFixedLimit + (scrollableHeight * 0.35f).toInt(),
+            topFixedLimit + (scrollableHeight * 0.52f).toInt(),
+            topFixedLimit + (scrollableHeight * 0.68f).toInt()
+        )
+
+        var bestRefTop = candidateYs[1]
+        var maxVariance = -1.0
+
+        for (candidateTop in candidateYs) {
+            val refBottom = (candidateTop + bandHeight).coerceAtMost(bottomFixedLimit)
+            var sumLum = 0.0
+            var sumLumSq = 0.0
+            var count = 0
+
+            for (y in candidateTop until refBottom step 4) {
+                for (x in sampleX) {
+                    val p = prev.getPixel(x, y)
+                    val r = (p shr 16) and 0xFF
+                    val g = (p shr 8) and 0xFF
+                    val b = p and 0xFF
+                    val lum = 0.299 * r + 0.587 * g + 0.114 * b
+                    sumLum += lum
+                    sumLumSq += (lum * lum)
+                    count++
+                }
+            }
+            if (count > 0) {
+                val mean = sumLum / count
+                val variance = (sumLumSq / count) - (mean * mean)
+                if (variance > maxVariance) {
+                    maxVariance = variance
+                    bestRefTop = candidateTop
+                }
+            }
+        }
+
+        val refTopInPrev = bestRefTop
+        val refBottomInPrev = (refTopInPrev + bandHeight).coerceAtMost(bottomFixedLimit)
+
+        val sampleRowsInPrev = mutableListOf<Int>()
+        for (y in refTopInPrev until refBottomInPrev step 3) {
+            sampleRowsInPrev.add(y)
+        }
+
+        // Possible scroll displacement delta range
+        val minDelta = 20
+        val maxDelta = (refTopInPrev - topFixedLimit - 6).coerceAtMost((scrollableHeight * 0.95f).toInt())
+
+        if (minDelta >= maxDelta) {
+            return (scrollableHeight * 0.40f).toInt()
+        }
+
+        // Coarse search (step by 5 pixels)
+        var bestDelta = (scrollableHeight * 0.40f).toInt()
+        var lowestDiff = Long.MAX_VALUE
+
+        for (delta in minDelta..maxDelta step 5) {
+            var diffSum = 0L
+            var count = 0
+
+            for (yPrev in sampleRowsInPrev) {
+                val yCurr = yPrev - delta
+                if (yCurr < topFixedLimit || yCurr >= bottomFixedLimit) continue
+
+                for (x in sampleX) {
+                    val p1 = prev.getPixel(x, yPrev)
+                    val p2 = curr.getPixel(x, yCurr)
+
+                    diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
+                            abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
+                            abs((p1 and 0xFF) - (p2 and 0xFF)))
+                    count++
+                }
+            }
+
+            if (count > 0) {
+                val avgDiff = diffSum / count
+                if (avgDiff < lowestDiff) {
+                    lowestDiff = avgDiff
+                    bestDelta = delta
+                }
+            }
+        }
+
+        // Fine search around bestDelta (step by 1 pixel)
+        val fineMin = (bestDelta - 7).coerceAtLeast(minDelta)
+        val fineMax = (bestDelta + 7).coerceAtMost(maxDelta)
+        var refinedDelta = bestDelta
+
+        for (delta in fineMin..fineMax) {
+            var diffSum = 0L
+            var count = 0
+
+            for (yPrev in sampleRowsInPrev) {
+                val yCurr = yPrev - delta
+                if (yCurr < topFixedLimit || yCurr >= bottomFixedLimit) continue
+
+                for (x in sampleX) {
+                    val p1 = prev.getPixel(x, yPrev)
+                    val p2 = curr.getPixel(x, yCurr)
+
+                    diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
+                            abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
+                            abs((p1 and 0xFF) - (p2 and 0xFF)))
+                    count++
+                }
+            }
+
+            if (count > 0) {
+                val avgDiff = diffSum / count
+                if (avgDiff < lowestDiff) {
+                    lowestDiff = avgDiff
+                    refinedDelta = delta
+                }
+            }
+        }
+
+        Log.d(TAG, "Seamless offset detected: delta=$refinedDelta px (avgDiff=$lowestDiff)")
+        return refinedDelta
+    }
+
+    /**
+     * Stitches an ordered list of screenshot bitmaps into a single continuous, seamless long bitmap.
+     * Accurately aligns consecutive frames, completely removing duplicated status bars, browser address bars,
+     * tabs, and navigation bars from all intermediate frames.
      *
      * @param bitmaps Sequential frames captured while scrolling down.
      * @param statusBarHeightPx Height of system status bar to trim from intermediate frames.
      * @param navBarHeightPx Height of navigation bar to trim from intermediate frames.
-     * @return Stitched continuous bitmap.
+     * @return Stitched continuous seamless bitmap.
      */
     fun stitch(
         bitmaps: List<Bitmap>,
@@ -45,53 +316,72 @@ object LongScreenshotStitcher {
         }
 
         val width = bitmaps[0].width
-        val safeStatusBar = statusBarHeightPx.coerceAtLeast(0)
-        val safeNavBar = navBarHeightPx.coerceAtLeast(0)
+        val height = bitmaps[0].height
 
-        // Calculate slice heights for each frame:
-        // Frame 0: keep top (0 to height - navBar)
-        // Middle frames (1 .. n-2): keep center (statusBar to height - navBar)
-        // Last frame (n-1): keep bottom (statusBar to height)
-        val sliceRects = mutableListOf<Rect>()
-        var totalHeight = 0
+        // Detect fixed top and bottom limits between first two frames
+        val topFixedLimit = detectFixedTopBarHeight(bitmaps[0], bitmaps[1], statusBarHeightPx)
+        val bottomFixedLimit = detectFixedBottomBarTop(bitmaps[0], bitmaps[1], navBarHeightPx)
 
-        for (i in bitmaps.indices) {
-            val bmp = bitmaps[i]
-            val top = when (i) {
-                0 -> 0
-                else -> safeStatusBar.coerceAtMost(bmp.height / 3)
+        // Store slices to render
+        data class FrameSlice(val bitmap: Bitmap, val srcTop: Int, val srcBottom: Int)
+        val slices = mutableListOf<FrameSlice>()
+
+        // Frame 0: include from 0 down to bottomFixedLimit
+        // This includes the top header/status bar ONCE at the top of the stitched document
+        slices.add(FrameSlice(bitmaps[0], 0, bottomFixedLimit))
+
+        var curBottomLimit = bottomFixedLimit
+
+        for (i in 1 until bitmaps.size) {
+            val prevBmp = bitmaps[i - 1]
+            val currBmp = bitmaps[i]
+
+            val delta = findVerticalOffset(prevBmp, currBmp, statusBarHeightPx, navBarHeightPx)
+            if (delta <= 15) {
+                Log.d(TAG, "Frame $i reached bottom of page or failed to scroll (delta=$delta), stopping.")
+                break
             }
-            val bottom = when (i) {
-                bitmaps.lastIndex -> bmp.height
-                else -> (bmp.height - safeNavBar).coerceAtLeast(top + 10)
+
+            // In currBmp, new content not visible in prevBmp is strictly from (curBottomLimit - delta) to curBottomLimit
+            // Because delta is calculated relative to curBottomLimit, (curBottomLimit - delta) >= topFixedLimit,
+            // entirely excluding the duplicate top bar / address bar!
+            val yStart = (curBottomLimit - delta).coerceAtLeast(topFixedLimit)
+            val yEnd = curBottomLimit
+
+            if (yEnd > yStart) {
+                slices.add(FrameSlice(currBmp, yStart, yEnd))
             }
-            val sliceHeight = max(1, bottom - top)
-            sliceRects.add(Rect(0, top, width, bottom))
-            totalHeight += sliceHeight
         }
 
-        // Limit total height to safe max texture dimension (e.g. 16384px) to prevent OOM
+        // Optionally append the bottom bar / nav bar from the very last frame once at the end
+        if (bottomFixedLimit < height) {
+            slices.add(FrameSlice(bitmaps.last(), bottomFixedLimit, height))
+        }
+
+        var totalHeight = 0
+        for (s in slices) {
+            totalHeight += (s.srcBottom - s.srcTop)
+        }
+
         val clampedHeight = totalHeight.coerceIn(1, 16384)
         val stitched = Bitmap.createBitmap(width, clampedHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(stitched)
 
-        var currentY = 0
-        val dstRect = Rect()
-
-        for (i in bitmaps.indices) {
-            val src = sliceRects[i]
-            val sliceH = src.height()
-            dstRect.set(0, currentY, width, (currentY + sliceH).coerceAtMost(clampedHeight))
-            canvas.drawBitmap(bitmaps[i], src, dstRect, null)
-            currentY += sliceH
-            if (currentY >= clampedHeight) break
+        var curY = 0
+        for (s in slices) {
+            val sliceH = s.srcBottom - s.srcTop
+            val src = Rect(0, s.srcTop, width, s.srcBottom)
+            val dst = Rect(0, curY, width, (curY + sliceH).coerceAtMost(clampedHeight))
+            canvas.drawBitmap(s.bitmap, src, dst, null)
+            curY += sliceH
+            if (curY >= clampedHeight) break
         }
 
         return stitched
     }
 
     /**
-     * Appends a newly scrolled page to the bottom of an existing long screenshot.
+     * Appends a newly scrolled page to the bottom of an existing long screenshot seamlessly.
      */
     fun appendSegment(
         existingBitmap: Bitmap,
@@ -100,9 +390,26 @@ object LongScreenshotStitcher {
         navBarHeightPx: Int = 0
     ): Bitmap {
         val width = existingBitmap.width
-        val safeStatusBar = statusBarHeightPx.coerceAtLeast(0).coerceAtMost(newSegment.height / 3)
-        val newSliceHeight = max(1, newSegment.height - safeStatusBar)
+        val height = newSegment.height
 
+        // Find offset using the bottom screen-sized portion of existingBitmap
+        val bottomSection = if (existingBitmap.height > height) {
+            Bitmap.createBitmap(existingBitmap, 0, existingBitmap.height - height, width, height)
+        } else {
+            existingBitmap
+        }
+
+        val topFixedLimit = detectFixedTopBarHeight(bottomSection, newSegment, statusBarHeightPx)
+        val bottomFixedLimit = detectFixedBottomBarTop(bottomSection, newSegment, navBarHeightPx)
+        val delta = findVerticalOffset(bottomSection, newSegment, statusBarHeightPx, navBarHeightPx)
+
+        val yStart = if (delta > 15) {
+            (bottomFixedLimit - delta).coerceAtLeast(topFixedLimit)
+        } else {
+            (height * 0.45f).toInt().coerceAtLeast(topFixedLimit)
+        }
+
+        val newSliceHeight = (bottomFixedLimit - yStart).coerceAtLeast(1)
         val totalHeight = (existingBitmap.height + newSliceHeight).coerceAtMost(16384)
         val result = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
@@ -110,8 +417,8 @@ object LongScreenshotStitcher {
         // Draw existing bitmap
         canvas.drawBitmap(existingBitmap, 0f, 0f, null)
 
-        // Draw new segment below existing
-        val src = Rect(0, safeStatusBar, newSegment.width, newSegment.height)
+        // Draw new segment slice below existing (zero overlap, no duplicate top header)
+        val src = Rect(0, yStart, width, bottomFixedLimit)
         val dst = Rect(0, existingBitmap.height, width, totalHeight)
         canvas.drawBitmap(newSegment, src, dst, null)
 

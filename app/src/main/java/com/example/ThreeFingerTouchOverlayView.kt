@@ -182,12 +182,7 @@ class ThreeFingerTouchOverlayView @JvmOverloads constructor(
         val notchTop = (h - notchH) / 2f
         notchRect.set(notchLeft, notchTop, notchLeft + notchW, notchTop + notchH)
 
-        val isLongMode = TriggerPreferenceManager.getCaptureMode(context) == TriggerPreferenceManager.CaptureMode.LONG_SCREENSHOT
-        gripPaint.color = if (isLongMode) {
-            if (isPressedState) Color.argb(220, 2, 132, 199) else Color.argb(170, 56, 189, 248)
-        } else {
-            if (isPressedState) Color.argb(140, 71, 85, 105) else Color.argb(85, 100, 116, 139)
-        }
+        gripPaint.color = if (isPressedState) Color.argb(140, 71, 85, 105) else Color.argb(85, 100, 116, 139)
         canvas.drawRoundRect(notchRect, notchW / 2f, notchW / 2f, gripPaint)
     }
 
