@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/top_pill_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_floating_pill"
+    android:elevation="14dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="10dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="5dp">
+
+    <!-- Thumbnail Preview of Captured Long Screenshot -->
+    <ImageView
+        android:id="@+id/iv_pill_thumbnail"
+        android:layout_width="22dp"
+        android:layout_height="34dp"
+        android:background="#20FFFFFF"
+        android:contentDescription="Long Screenshot Preview"
+        android:scaleType="centerCrop" />
+
+    <!-- Page Count Badge -->
+    <TextView
+        android:id="@+id/tv_pill_page_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="6dp"
+        android:text="2 pages"
+        android:textColor="#F1F5F9"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <!-- Vertical Separator -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="6dp"
+        android:background="#33FFFFFF" />
+
+    <!-- Copy Button -->
+    <ImageButton
+        android:id="@+id/btn_pill_copy"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Copy Long Screenshot"
+        android:src="@drawable/ic_copy" />
+
+    <!-- Save Button -->
+    <ImageButton
+        android:id="@+id/btn_pill_save"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Save to Gallery"
+        android:src="@drawable/ic_save" />
+
+    <!-- Share Button -->
+    <ImageButton
+        android:id="@+id/btn_pill_share"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Share Long Screenshot"
+        android:src="@drawable/ic_share" />
+
+    <!-- Delete Button -->
+    <ImageButton
+        android:id="@+id/btn_pill_delete"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Delete Long Screenshot"
+        android:src="@drawable/ic_delete" />
+
+    <!-- Vertical Separator -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="24dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
+        android:background="#33FFFFFF" />
+
+    <!-- Close Button -->
+    <ImageButton
+        android:id="@+id/btn_pill_close"
+        android:layout_width="38dp"
+        android:layout_height="38dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Close Overlay"
+        android:src="@drawable/ic_close" />
+
+</LinearLayout>

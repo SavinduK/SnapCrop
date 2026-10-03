@@ -316,85 +316,13 @@ class KeyCaptureService : AccessibilityService() {
     }
 
     /**
-     * Performs continuous scrolling screenshot capture using programmatic gestures and
-     * high-speed hardware buffer stitching.
+     * Performs continuous scrolling screenshot capture using the interactive Samsung-style
+     * scroll capture toolbar and top pill overlay.
      */
-    fun performLongScreenCapture(maxPages: Int = 3) {
+    fun performLongScreenCapture(initialBitmap: Bitmap? = null) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Log.d(TAG, "Initiating long screenshot capture with max $maxPages pages")
-            touchOverlayManager?.setOverlayVisibility(false)
-
-            val capturedBitmaps = mutableListOf<Bitmap>()
-            val dm = resources.displayMetrics
-            val screenW = dm.widthPixels.toFloat()
-            val screenH = dm.heightPixels.toFloat()
-            val statusBarH = (28 * dm.density).toInt()
-            val navBarH = (24 * dm.density).toInt()
-
-            fun captureStep(pageIndex: Int) {
-                mainHandler.postDelayed({
-                    takeScreenshot(
-                        Display.DEFAULT_DISPLAY,
-                        mainExecutor,
-                        object : TakeScreenshotCallback {
-                            override fun onSuccess(screenshotResult: ScreenshotResult) {
-                                val hwBuffer = screenshotResult.hardwareBuffer
-                                val colorSpace = screenshotResult.colorSpace
-                                val hwBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, colorSpace)
-                                hwBuffer.close()
-
-                                val swBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
-                                hwBitmap?.recycle()
-
-                                if (swBitmap != null) {
-                                    capturedBitmaps.add(swBitmap)
-                                }
-
-                                if (capturedBitmaps.size < maxPages) {
-                                    // Smooth scroll down by swiping up programmatically (320ms stroke)
-                                    val swipePath = android.graphics.Path().apply {
-                                        moveTo(screenW / 2f, screenH * 0.72f)
-                                        lineTo(screenW / 2f, screenH * 0.28f)
-                                    }
-                                    val gesture = android.accessibilityservice.GestureDescription.Builder()
-                                        .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(swipePath, 0, 300))
-                                        .build()
-
-                                    val dispatched = dispatchGesture(gesture, object : GestureResultCallback() {
-                                        override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                                            // Wait 600ms for inertial scrolling and page rendering to settle cleanly
-                                            mainHandler.postDelayed({
-                                                captureStep(pageIndex + 1)
-                                            }, 600L)
-                                        }
-
-                                        override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                                            finishLongCapture(capturedBitmaps, statusBarH, navBarH)
-                                        }
-                                    }, mainHandler)
-
-                                    if (!dispatched) {
-                                        finishLongCapture(capturedBitmaps, statusBarH, navBarH)
-                                    }
-                                } else {
-                                    finishLongCapture(capturedBitmaps, statusBarH, navBarH)
-                                }
-                            }
-
-                            override fun onFailure(errorCode: Int) {
-                                Log.e(TAG, "takeScreenshot failed during long capture: $errorCode")
-                                if (capturedBitmaps.isNotEmpty()) {
-                                    finishLongCapture(capturedBitmaps, statusBarH, navBarH)
-                                } else {
-                                    setOverlayVisibility(true)
-                                }
-                            }
-                        }
-                    )
-                }, if (pageIndex == 0) 320L else 120L)
-            }
-
-            captureStep(0)
+            Log.d(TAG, "Initiating interactive long screenshot capture via LongScreenshotManager")
+            LongScreenshotManager.startCapture(this, initialBitmap)
         } else {
             generateAndLaunchFallbackLongScreenshot()
         }

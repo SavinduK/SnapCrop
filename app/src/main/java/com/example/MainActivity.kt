@@ -150,6 +150,10 @@ fun SnapCropMainScreen() {
         mutableStateOf(CropFeaturePreferenceManager.isBatchSelectEnabled(context))
     }
 
+    var isLongScreenshotEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
+    }
+
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -160,6 +164,7 @@ fun SnapCropMainScreen() {
                 currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
                 isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
+                isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -269,6 +274,22 @@ fun SnapCropMainScreen() {
                     CropFeaturePreferenceManager.setBatchSelectEnabled(context, enabled)
                 },
                 testTag = "toggle_batch_select"
+            )
+
+            // Toggle: Long Screenshot Button (Default: ON)
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_long_screenshot_title),
+                description = stringResource(R.string.feature_long_screenshot_desc),
+                customIcon = { tint ->
+                    ScrollCaptureIcon(tint = tint, modifier = Modifier.size(22.dp))
+                },
+                iconTint = Color(0xFF38BDF8),
+                isChecked = isLongScreenshotEnabled,
+                onCheckedChange = { enabled ->
+                    isLongScreenshotEnabled = enabled
+                    CropFeaturePreferenceManager.setLongScreenshotEnabled(context, enabled)
+                },
+                testTag = "toggle_long_screenshot"
             )
 
             // Section: AI Model to Share (Gemini default, ChatGPT & Claude) - only when Share to AI is active
