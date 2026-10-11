@@ -1321,40 +1321,6 @@ private fun CropOverlayContent(
             }
         }
 
-        // 2d. Bottom Instruction Capsule & Quick Scroll Capture Action
-        if (!hasValidSelection && !showFullTextSheet && !showFullSizeViewer && !isSimulatingScrollCapture && !showTopPillOnly) {
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = Color(0xF20F172A),
-                border = BorderStroke(1.dp, Color(0x4DFFFFFF)),
-                tonalElevation = 6.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 36.dp)
-                    .testTag("hint_bottom_capsule")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CropFree,
-                        contentDescription = null,
-                        tint = Color(0xFF00E5FF),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.crop_hint_initial),
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-        }
-
         // 2b. Batch Status & Actions Bar (collapsible, hidden when overlay triggered, opened on toggle click)
         AnimatedVisibility(
             visible = isBatchModeEnabled && isBatchMenuExpanded && batchCount > 0 && ocrResultText == null,
@@ -2338,10 +2304,8 @@ private fun OcrHighlightOverlay(
                 }
         ) {
             val cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-            val selectedFill = Color(0x6600E5FF) // Electric cyan highlighter
-            val selectedStroke = Color(0xFF00E5FF)
-            val unselectedFill = Color(0x2200E5FF)
-            val unselectedStroke = Color(0x5500E5FF)
+            val selectedFill = Color(0x664285F4) // Google selection highlight fill
+            val unselectedFill = Color(0x144285F4)
 
             val selectedElements = elements.filter { it.isSelected }
 
@@ -2359,26 +2323,12 @@ private fun OcrHighlightOverlay(
                         size = drawSize,
                         cornerRadius = cornerRadius
                     )
-                    drawRoundRect(
-                        color = selectedStroke,
-                        topLeft = drawTopLeft,
-                        size = drawSize,
-                        cornerRadius = cornerRadius,
-                        style = Stroke(width = 1.6.dp.toPx())
-                    )
                 } else {
                     drawRoundRect(
                         color = unselectedFill,
                         topLeft = drawTopLeft,
                         size = drawSize,
                         cornerRadius = cornerRadius
-                    )
-                    drawRoundRect(
-                        color = unselectedStroke,
-                        topLeft = drawTopLeft,
-                        size = drawSize,
-                        cornerRadius = cornerRadius,
-                        style = Stroke(width = 0.8.dp.toPx())
                     )
                 }
             }

@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.SweepGradient
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -97,28 +98,61 @@ open class SelectionView @JvmOverloads constructor(
         style = Paint.Style.FILL
     }
 
-    private val cyanBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF") // High-contrast Electric Cyan
+    // Google Circle to Search signature multicolor glow palette
+    private val googleGlowColors = intArrayOf(
+        Color.parseColor("#4285F4"), // Google Blue
+        Color.parseColor("#EA4335"), // Google Red
+        Color.parseColor("#FBBC05"), // Google Yellow
+        Color.parseColor("#34A853"), // Google Green
+        Color.parseColor("#4285F4")  // Loop back to Google Blue
+    )
+    private val googleGlowPositions = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+
+    // Outer soft aura glow
+    private val glowPaintOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(2.5f)
+        strokeWidth = dpToPx(14f)
+        alpha = 65
     }
 
-    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.argb(60, 255, 255, 255) // Rule of thirds grid
+    // Mid vibrant aura glow
+    private val glowPaintMid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(1f)
+        strokeWidth = dpToPx(7.5f)
+        alpha = 135
     }
 
-    // Edge handle paints (pill)
-    private val edgeHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#00E5FF")
+    // Inner sharp aura glow
+    private val glowPaintInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dpToPx(3.6f)
+        alpha = 200
+    }
+
+    // Thin white box border (Circle to Search signature crisp border)
+    private val whiteBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = dpToPx(1.8f)
+    }
+
+    // Corner handle grip dots
+    private val cornerHandleGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#4285F4")
+        style = Paint.Style.STROKE
+        strokeWidth = dpToPx(2.2f)
+    }
+
+    private val cornerHandleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
         style = Paint.Style.FILL
     }
 
-    private val edgeBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    // Edge handle pills (subtle frosted white)
+    private val edgePillFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = dpToPx(1f)
+        style = Paint.Style.FILL
+        alpha = 230
     }
 
     private fun dpToPx(dp: Float): Float = dp * resources.displayMetrics.density
@@ -203,64 +237,79 @@ open class SelectionView @JvmOverloads constructor(
             canvas.drawRect(0f, selectionRect.top, selectionRect.left, selectionRect.bottom, maskPaint) // Left
             canvas.drawRect(selectionRect.right, selectionRect.top, viewW, selectionRect.bottom, maskPaint) // Right
 
-            // 3. Rule of thirds guide lines (hidden during OCR mode)
-            if (!isOcrMode) {
-                val thirdW = selectionRect.width() / 3f
-                val thirdH = selectionRect.height() / 3f
-                canvas.drawLine(selectionRect.left + thirdW, selectionRect.top, selectionRect.left + thirdW, selectionRect.bottom, gridPaint)
-                canvas.drawLine(selectionRect.left + 2f * thirdW, selectionRect.top, selectionRect.left + 2f * thirdW, selectionRect.bottom, gridPaint)
-                canvas.drawLine(selectionRect.left, selectionRect.top + thirdH, selectionRect.right, selectionRect.top + thirdH, gridPaint)
-                canvas.drawLine(selectionRect.left, selectionRect.top + 2f * thirdH, selectionRect.right, selectionRect.top + 2f * thirdH, gridPaint)
-            }
+            // 3. Google Circle to Search signature multicolor glow around the selection
+            val cx = selectionRect.centerX()
+            val cy = selectionRect.centerY()
+            val sweepShader = SweepGradient(cx, cy, googleGlowColors, googleGlowPositions)
+            glowPaintOuter.shader = sweepShader
+            glowPaintMid.shader = sweepShader
+            glowPaintInner.shader = sweepShader
 
-            // 4. High-contrast cyan border
-            canvas.drawRect(selectionRect, cyanBorderPaint)
+            val cornerRadius = dpToPx(7f)
 
-            // 5. Interactive edge handles (hidden during OCR mode)
+            // Multi-layer ambient multicolor glow
+            canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintOuter)
+            canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintMid)
+            canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintInner)
+
+            // 4. Thin crisp white box border
+            canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, whiteBorderPaint)
+
+            // 5. Interactive handles (hidden during OCR mode)
             if (!isOcrMode) {
-                val pillLen = dpToPx(30f)
-                val pillThick = dpToPx(5.5f)
+                // 4 Corner anchor handles
+                val handleRadius = dpToPx(4.5f)
+                val corners = listOf(
+                    selectionRect.left to selectionRect.top,
+                    selectionRect.right to selectionRect.top,
+                    selectionRect.left to selectionRect.bottom,
+                    selectionRect.right to selectionRect.bottom
+                )
+                for ((hx, hy) in corners) {
+                    canvas.drawCircle(hx, hy, handleRadius + dpToPx(1.5f), cornerHandleGlowPaint)
+                    canvas.drawCircle(hx, hy, handleRadius, cornerHandleFillPaint)
+                }
+
+                // Subtle edge handles
+                val pillLen = dpToPx(22f)
+                val pillThick = dpToPx(3.5f)
                 val pillRadius = pillThick / 2f
 
                 // Top Edge
                 edgePillRect.set(
-                    selectionRect.centerX() - pillLen / 2f,
+                    cx - pillLen / 2f,
                     selectionRect.top - pillThick / 2f,
-                    selectionRect.centerX() + pillLen / 2f,
+                    cx + pillLen / 2f,
                     selectionRect.top + pillThick / 2f
                 )
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgePillFillPaint)
 
                 // Bottom Edge
                 edgePillRect.set(
-                    selectionRect.centerX() - pillLen / 2f,
+                    cx - pillLen / 2f,
                     selectionRect.bottom - pillThick / 2f,
-                    selectionRect.centerX() + pillLen / 2f,
+                    cx + pillLen / 2f,
                     selectionRect.bottom + pillThick / 2f
                 )
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgePillFillPaint)
 
                 // Left Edge
                 edgePillRect.set(
                     selectionRect.left - pillThick / 2f,
-                    selectionRect.centerY() - pillLen / 2f,
+                    cy - pillLen / 2f,
                     selectionRect.left + pillThick / 2f,
-                    selectionRect.centerY() + pillLen / 2f
+                    cy + pillLen / 2f
                 )
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgePillFillPaint)
 
                 // Right Edge
                 edgePillRect.set(
                     selectionRect.right - pillThick / 2f,
-                    selectionRect.centerY() - pillLen / 2f,
+                    cy - pillLen / 2f,
                     selectionRect.right + pillThick / 2f,
-                    selectionRect.centerY() + pillLen / 2f
+                    cy + pillLen / 2f
                 )
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeHandlePaint)
-                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgeBorderPaint)
+                canvas.drawRoundRect(edgePillRect, pillRadius, pillRadius, edgePillFillPaint)
             }
         } else {
             // When no selection exists, render full-screen translucent dark mask
