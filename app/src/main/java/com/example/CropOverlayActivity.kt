@@ -1298,6 +1298,9 @@ private fun CropOverlayContent(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
+
+                        // Generous space between long screenshot and close icon
+                        Spacer(modifier = Modifier.width(16.dp))
                     }
 
                     // Close (✕) Button
@@ -1541,10 +1544,9 @@ private fun CropOverlayContent(
                         // Main Action Capsule Dock
                         Surface(
                             shape = RoundedCornerShape(percent = 50),
-                            color = Color(0xF21E232B), // Dark capsule dock
+                            color = Color(0x28FFFFFF), // Interchanged: former button color
                             tonalElevation = 6.dp,
                             shadowElevation = 12.dp,
-                            border = BorderStroke(1.2.dp, Color(0x33FFFFFF)),
                             modifier = Modifier.testTag("floating_action_toolbar")
                         ) {
                             val selectedAiModel = remember { AiModelPreferenceManager.getSelectedModel(context) }
@@ -1588,10 +1590,9 @@ private fun CropOverlayContent(
                                         )
                                     },
                                     contentDescription = stringResource(R.string.crop_btn_select_text),
-                                    testTag = "btn_select_text_crop",
-                                    backgroundColor = Color(0x3300E5FF)
+                                    testTag = "btn_select_text_crop"
                                 ) {
-                                    SelectTextIcon(tint = Color(0xFF00E5FF))
+                                    SelectTextIcon(tint = Color.White)
                                 }
 
                             // 2. Ask AI Button (Gemini, Google Search, ChatGPT, or Claude) - conditional on Share to AI toggle
@@ -1625,10 +1626,9 @@ private fun CropOverlayContent(
                                         batchCount = BatchCropManager.getBatchCount(context)
                                     },
                                     contentDescription = stringResource(R.string.crop_btn_add_to_batch),
-                                    testTag = "btn_add_to_batch_crop",
-                                    backgroundColor = Color(0x33F59E0B)
+                                    testTag = "btn_add_to_batch_crop"
                                 ) {
-                                    AddToBatchIcon(tint = Color(0xFFFBBF24))
+                                    AddToBatchIcon(tint = Color.White)
                                 }
                             }
 
@@ -2415,7 +2415,6 @@ private fun CircleToSearchOcrDock(
         color = Color(0xF2161E2E), // Deep slate pill
         tonalElevation = 6.dp,
         shadowElevation = 14.dp,
-        border = BorderStroke(1.2.dp, Color(0x6600E5FF)),
         modifier = Modifier.testTag("circle_to_search_dock")
     ) {
         Row(
@@ -2423,22 +2422,6 @@ private fun CircleToSearchOcrDock(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // 1. Selection indicator / toggle all chip
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0x3300E5FF))
-                    .clickable(onClick = onToggleSelectAll)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (allSelected) "All ($totalCount)" else "$selectedCount/$totalCount",
-                    color = Color(0xFF00E5FF),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
             // 2. Primary Copy Button (prominent Circle to Search action)
             Box(
@@ -2898,7 +2881,7 @@ private fun CropActionCircleButton(
     testTag: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    backgroundColor: Color = Color(0x28FFFFFF),
+    backgroundColor: Color = Color(0xF21E232B), // Interchanged: was toolbar background color
     content: @Composable () -> Unit
 ) {
     Box(

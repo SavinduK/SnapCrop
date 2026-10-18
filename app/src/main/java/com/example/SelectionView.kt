@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.SweepGradient
@@ -86,6 +87,7 @@ open class SelectionView @JvmOverloads constructor(
     private val srcRect = Rect()
     private val dstRect = Rect()
     private val edgePillRect = RectF()
+    private val maskPath = Path()
 
     // Configuration dimensions (scaled to display density)
     private val minBoxSize by lazy { dpToPx(36f) }
@@ -118,34 +120,22 @@ open class SelectionView @JvmOverloads constructor(
     // Mid vibrant aura glow
     private val glowPaintMid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(7.5f)
+        strokeWidth = dpToPx(8f)
         alpha = 135
     }
 
     // Inner sharp aura glow
     private val glowPaintInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(3.6f)
+        strokeWidth = dpToPx(5f)
         alpha = 200
     }
 
-    // Thin white box border (Circle to Search signature crisp border)
+    // Thin 5dp white box border (Circle to Search signature crisp border)
     private val whiteBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(1.8f)
-    }
-
-    // Corner handle grip dots
-    private val cornerHandleGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4285F4")
-        style = Paint.Style.STROKE
-        strokeWidth = dpToPx(2.2f)
-    }
-
-    private val cornerHandleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        style = Paint.Style.FILL
+        strokeWidth = dpToPx(5f)
     }
 
     // Edge handle pills (subtle frosted white)
@@ -231,11 +221,14 @@ open class SelectionView @JvmOverloads constructor(
 
         // 2. Dim area outside active selection with translucent dark mask (#80000000)
         if (hasSelection && selectionRect.width() > 5f && selectionRect.height() > 5f) {
-            // Outside dimmed regions
-            canvas.drawRect(0f, 0f, viewW, selectionRect.top, maskPaint) // Top
-            canvas.drawRect(0f, selectionRect.bottom, viewW, viewH, maskPaint) // Bottom
-            canvas.drawRect(0f, selectionRect.top, selectionRect.left, selectionRect.bottom, maskPaint) // Left
-            canvas.drawRect(selectionRect.right, selectionRect.top, viewW, selectionRect.bottom, maskPaint) // Right
+            val cornerRadius = dpToPx(16f) // Curved borders
+
+            // Outside dimmed regions curved around selection borders
+            maskPath.reset()
+            maskPath.fillType = Path.FillType.EVEN_ODD
+            maskPath.addRect(0f, 0f, viewW, viewH, Path.Direction.CW)
+            maskPath.addRoundRect(selectionRect, cornerRadius, cornerRadius, Path.Direction.CW)
+            canvas.drawPath(maskPath, maskPaint)
 
             // 3. Google Circle to Search signature multicolor glow around the selection
             val cx = selectionRect.centerX()
@@ -245,31 +238,16 @@ open class SelectionView @JvmOverloads constructor(
             glowPaintMid.shader = sweepShader
             glowPaintInner.shader = sweepShader
 
-            val cornerRadius = dpToPx(7f)
-
-            // Multi-layer ambient multicolor glow
+            // Multi-layer ambient multicolor glow with curved borders
             canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintOuter)
             canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintMid)
             canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, glowPaintInner)
 
-            // 4. Thin crisp white box border
+            // 4. Thin 5dp crisp white box border with curved borders
             canvas.drawRoundRect(selectionRect, cornerRadius, cornerRadius, whiteBorderPaint)
 
-            // 5. Interactive handles (hidden during OCR mode)
+            // 5. Interactive handles (circles on the 4 corners removed; subtle edge handles remain)
             if (!isOcrMode) {
-                // 4 Corner anchor handles
-                val handleRadius = dpToPx(4.5f)
-                val corners = listOf(
-                    selectionRect.left to selectionRect.top,
-                    selectionRect.right to selectionRect.top,
-                    selectionRect.left to selectionRect.bottom,
-                    selectionRect.right to selectionRect.bottom
-                )
-                for ((hx, hy) in corners) {
-                    canvas.drawCircle(hx, hy, handleRadius + dpToPx(1.5f), cornerHandleGlowPaint)
-                    canvas.drawCircle(hx, hy, handleRadius, cornerHandleFillPaint)
-                }
-
                 // Subtle edge handles
                 val pillLen = dpToPx(22f)
                 val pillThick = dpToPx(3.5f)
