@@ -18,10 +18,23 @@ import java.io.FileOutputStream
 /**
  * Manages storing, retrieving, clearing, batch saving to Gallery,
  * and batch sharing of multiple cropped screenshots in temporary app storage.
+ *
+ * Temporary Storage Policy:
+ * Items saved to the app temporary storage are retained for 24 hours and automatically
+ * expired and purged.
  */
 object BatchCropManager {
     private const val TAG = "BatchCropManager"
     private const val BATCH_DIR_NAME = "batch_crops"
+
+    /** 24-hour retention duration in milliseconds */
+    const val RETENTION_PERIOD_MS = 24 * 60 * 60 * 1000L
+
+    data class TemporaryScreenshotItem(
+        val file: File,
+        val timestamp: Long,
+        val remainingTimeMs: Long
+    )
 
     fun getBatchDir(context: Context): File {
         val dir = File(context.cacheDir, BATCH_DIR_NAME)
@@ -32,17 +45,56 @@ object BatchCropManager {
     }
 
     /**
-     * Returns list of saved batch files ordered by timestamp (oldest first).
+     * Purges files that are older than 24 hours.
+     * Returns count of deleted expired files.
+     */
+    fun cleanExpiredFiles(context: Context): Int {
+        val dir = getBatchDir(context)
+        val now = System.currentTimeMillis()
+        var deletedCount = 0
+        dir.listFiles { file -> file.isFile && file.name.endsWith(".png") }?.forEach { file ->
+            val age = now - file.lastModified()
+            if (age > RETENTION_PERIOD_MS) {
+                if (file.delete()) {
+                    deletedCount++
+                    Log.d(TAG, "Purged expired screenshot: ${file.name} (age: ${age / 1000}s)")
+                }
+            }
+        }
+        return deletedCount
+    }
+
+    /**
+     * Returns list of saved batch files ordered by timestamp (newest first).
+     * Automatically runs 24h retention cleanup first.
      */
     fun getBatchFiles(context: Context): List<File> {
+        cleanExpiredFiles(context)
         val dir = getBatchDir(context)
         return dir.listFiles { file -> file.isFile && file.name.endsWith(".png") }
-            ?.sortedBy { it.lastModified() }
+            ?.sortedByDescending { it.lastModified() }
             ?: emptyList()
     }
 
     /**
-     * Returns the count of currently saved batch images.
+     * Returns structured temporary items with timestamp and remaining time.
+     */
+    fun getTemporaryItems(context: Context): List<TemporaryScreenshotItem> {
+        val files = getBatchFiles(context)
+        val now = System.currentTimeMillis()
+        return files.map { file ->
+            val modified = file.lastModified()
+            val remaining = (modified + RETENTION_PERIOD_MS - now).coerceAtLeast(0L)
+            TemporaryScreenshotItem(
+                file = file,
+                timestamp = modified,
+                remainingTimeMs = remaining
+            )
+        }
+    }
+
+    /**
+     * Returns the count of currently saved batch images within retention.
      */
     fun getBatchCount(context: Context): Int {
         return getBatchFiles(context).size
@@ -68,6 +120,31 @@ object BatchCropManager {
     }
 
     /**
+     * Deletes a single batch file.
+     */
+    fun deleteBatchFile(context: Context, file: File): Boolean {
+        return try {
+            file.delete()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete file: ${file.name}", e)
+            false
+        }
+    }
+
+    /**
+     * Deletes a list of batch files. Returns number of files successfully deleted.
+     */
+    fun deleteBatchFiles(context: Context, files: List<File>): Int {
+        var count = 0
+        for (f in files) {
+            if (deleteBatchFile(context, f)) {
+                count++
+            }
+        }
+        return count
+    }
+
+    /**
      * Clears all temporary saved batch images.
      * Returns the count of deleted files.
      */
@@ -84,14 +161,11 @@ object BatchCropManager {
     }
 
     /**
-     * Saves all images in the batch (plus an optional additional bitmap)
-     * to the system Gallery (Pictures/SnapCrop).
+     * Saves a specific list of files to the system Gallery (Pictures/SnapCrop).
      * Returns total count of images saved.
      */
-    fun saveBatchToGallery(context: Context, additionalBitmap: Bitmap? = null): Int {
-        val files = getBatchFiles(context)
+    fun saveMultipleFilesToGallery(context: Context, files: List<File>): Int {
         var savedCount = 0
-
         for (file in files) {
             val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: continue
             if (saveBitmapToMediaStore(context, bitmap)) {
@@ -99,6 +173,17 @@ object BatchCropManager {
             }
             bitmap.recycle()
         }
+        return savedCount
+    }
+
+    /**
+     * Saves all images in the batch (plus an optional additional bitmap)
+     * to the system Gallery (Pictures/SnapCrop).
+     * Returns total count of images saved.
+     */
+    fun saveBatchToGallery(context: Context, additionalBitmap: Bitmap? = null): Int {
+        val files = getBatchFiles(context)
+        var savedCount = saveMultipleFilesToGallery(context, files)
 
         if (additionalBitmap != null) {
             if (saveBitmapToMediaStore(context, additionalBitmap)) {
@@ -109,7 +194,7 @@ object BatchCropManager {
         return savedCount
     }
 
-    private fun saveBitmapToMediaStore(context: Context, bitmap: Bitmap): Boolean {
+    fun saveBitmapToMediaStore(context: Context, bitmap: Bitmap): Boolean {
         return try {
             val timestamp = System.currentTimeMillis()
             val filename = "SnapCrop_batch_${timestamp}_${(100..999).random()}.png"
@@ -153,15 +238,9 @@ object BatchCropManager {
     }
 
     /**
-     * Prepares an ACTION_SEND_MULTIPLE chooser intent to share all batch files
-     * (and optionally saves additionalBitmap into batch first).
+     * Creates an ACTION_SEND_MULTIPLE chooser intent for the specified list of files.
      */
-    fun createShareBatchChooserIntent(context: Context, additionalBitmap: Bitmap? = null): Intent? {
-        if (additionalBitmap != null) {
-            addCroppedBitmapToBatch(context, additionalBitmap)
-        }
-
-        val files = getBatchFiles(context)
+    fun createShareIntentForFiles(context: Context, files: List<File>): Intent? {
         if (files.isEmpty()) return null
 
         val uris = ArrayList<Uri>()
@@ -174,28 +253,49 @@ object BatchCropManager {
                 )
                 uris.add(uri)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to get URI for batch file: ${f.name}", e)
+                Log.e(TAG, "Failed to get URI for file: ${f.name}", e)
             }
         }
 
         if (uris.isEmpty()) return null
 
-        val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "image/png"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            val clipData = ClipData.newUri(context.contentResolver, "Batch Screenshots", uris[0])
-            for (i in 1 until uris.size) {
-                clipData.addItem(ClipData.Item(uris[i]))
+        val shareIntent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uris[0])
+                clipData = ClipData.newUri(context.contentResolver, "Screenshot", uris[0])
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            setClipData(clipData)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "image/png"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                val clipData = ClipData.newUri(context.contentResolver, "Screenshots", uris[0])
+                for (i in 1 until uris.size) {
+                    clipData.addItem(ClipData.Item(uris[i]))
+                }
+                setClipData(clipData)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
 
-        val chooserTitle = "Share ${uris.size} Screenshots"
+        val chooserTitle = if (uris.size == 1) "Share Screenshot" else "Share ${uris.size} Screenshots"
         return Intent.createChooser(shareIntent, chooserTitle).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(Intent.EXTRA_TITLE, chooserTitle)
         }
+    }
+
+    /**
+     * Prepares an ACTION_SEND_MULTIPLE chooser intent to share all batch files
+     * (and optionally saves additionalBitmap into batch first).
+     */
+    fun createShareBatchChooserIntent(context: Context, additionalBitmap: Bitmap? = null): Intent? {
+        if (additionalBitmap != null) {
+            addCroppedBitmapToBatch(context, additionalBitmap)
+        }
+        val files = getBatchFiles(context)
+        return createShareIntentForFiles(context, files)
     }
 }

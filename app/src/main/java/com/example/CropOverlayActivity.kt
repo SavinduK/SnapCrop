@@ -62,17 +62,23 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -183,20 +189,26 @@ class CropOverlayActivity : ComponentActivity() {
                     onViewAttached = { view ->
                         selectionViewRef = view
                     },
-                    onGeminiRequested = { rect ->
-                        handleCropAndShareToAi(rect)
+                    onExtractBitmap = { rect ->
+                        extractCroppedBitmap(rect)
+                    },
+                    onGeminiRequested = { rect, bmp ->
+                        handleCropAndShareToAi(rect, bmp)
                     },
                     onOcrRequested = { rect, onTextExtracted, onError, onEmpty ->
                         performTextRecognition(rect, onTextExtracted, onEmpty, onError)
                     },
-                    onShareRequested = { rect ->
-                        handleCropAndShare(rect)
+                    onShareRequested = { rect, bmp ->
+                        handleCropAndShare(rect, bmp)
                     },
-                    onCopyRequested = { rect ->
-                        handleCropAndCopy(rect)
+                    onCopyRequested = { rect, bmp ->
+                        handleCropAndCopy(rect, bmp)
                     },
-                    onSaveRequested = { rect ->
-                        handleCropAndSaveToGallery(rect)
+                    onSaveRequested = { rect, bmp ->
+                        handleCropAndSaveToGallery(rect, bmp)
+                    },
+                    onSaveToAppStorageRequested = { rect, bmp ->
+                        handleSaveToAppTemporaryStorage(rect, bmp)
                     },
                     onAddToBatchRequested = { rect ->
                         handleAddToBatch(rect)
@@ -484,8 +496,8 @@ class CropOverlayActivity : ComponentActivity() {
      * Extracts cropped bitmap from selection and shares to the user's selected AI model
      * (Gemini, ChatGPT, or Claude), opening the app directly or falling back to Play Store / web.
      */
-    private fun handleCropAndShareToAi(rect: RectF) {
-        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+    private fun handleCropAndShareToAi(rect: RectF, customBitmap: Bitmap? = null) {
+        val croppedBitmap = customBitmap ?: extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -498,7 +510,9 @@ class CropOverlayActivity : ComponentActivity() {
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
-            croppedBitmap.recycle()
+            if (customBitmap == null) {
+                croppedBitmap.recycle()
+            }
 
             val contentUri = FileProvider.getUriForFile(
                 this,
@@ -661,8 +675,8 @@ class CropOverlayActivity : ComponentActivity() {
     /**
      * Crops the selection and shares it via the native Android Share Sheet with rich image thumbnail preview.
      */
-    private fun handleCropAndShare(rect: RectF) {
-        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+    private fun handleCropAndShare(rect: RectF, customBitmap: Bitmap? = null) {
+        val croppedBitmap = customBitmap ?: extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -674,7 +688,9 @@ class CropOverlayActivity : ComponentActivity() {
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
-            croppedBitmap.recycle()
+            if (customBitmap == null) {
+                croppedBitmap.recycle()
+            }
 
             Log.d(TAG, "Cropped image saved to ${croppedFile.absolutePath}")
 
@@ -710,8 +726,8 @@ class CropOverlayActivity : ComponentActivity() {
     /**
      * Crops the selection and copies it to the device clipboard.
      */
-    private fun handleCropAndCopy(rect: RectF) {
-        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+    private fun handleCropAndCopy(rect: RectF, customBitmap: Bitmap? = null) {
+        val croppedBitmap = customBitmap ?: extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -723,7 +739,9 @@ class CropOverlayActivity : ComponentActivity() {
             FileOutputStream(croppedFile).use { outStream ->
                 croppedBitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
-            croppedBitmap.recycle()
+            if (customBitmap == null) {
+                croppedBitmap.recycle()
+            }
 
             val contentUri = FileProvider.getUriForFile(
                 this,
@@ -748,8 +766,8 @@ class CropOverlayActivity : ComponentActivity() {
     /**
      * Crops the selection and saves it to the system Gallery (Pictures/SnapCrop).
      */
-    private fun handleCropAndSaveToGallery(rect: RectF) {
-        val croppedBitmap = extractCroppedBitmap(rect) ?: run {
+    private fun handleCropAndSaveToGallery(rect: RectF, customBitmap: Bitmap? = null) {
+        val croppedBitmap = customBitmap ?: extractCroppedBitmap(rect) ?: run {
             Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -797,9 +815,34 @@ class CropOverlayActivity : ComponentActivity() {
             Log.e(TAG, "Failed to save image to gallery", e)
             Toast.makeText(this, "Error saving to gallery", Toast.LENGTH_SHORT).show()
         } finally {
-            croppedBitmap.recycle()
+            if (customBitmap == null) {
+                croppedBitmap.recycle()
+            }
             finish()
         }
+    }
+
+    /**
+     * Stores the current cropped selection into app temporary storage (retained for 24 hours).
+     */
+    private fun handleSaveToAppTemporaryStorage(rect: RectF, customBitmap: Bitmap? = null) {
+        val croppedBitmap = customBitmap ?: extractCroppedBitmap(rect) ?: run {
+            Toast.makeText(this, "Screenshot bitmap unavailable", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        val file = BatchCropManager.addCroppedBitmapToBatch(this, croppedBitmap)
+        if (customBitmap == null) {
+            croppedBitmap.recycle()
+        }
+
+        if (file != null) {
+            Toast.makeText(this, getString(R.string.toast_saved_to_app_storage), Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Failed to save to temporary storage", Toast.LENGTH_SHORT).show()
+        }
+        finish()
     }
 
     /**
@@ -1082,16 +1125,18 @@ class CropOverlayActivity : ComponentActivity() {
 private fun CropOverlayContent(
     screenshot: Bitmap?,
     onViewAttached: (SelectionView) -> Unit,
-    onGeminiRequested: (RectF) -> Unit,
+    onExtractBitmap: (RectF) -> Bitmap?,
+    onGeminiRequested: (RectF, Bitmap?) -> Unit,
     onOcrRequested: (
         rect: RectF,
         onSuccess: (CropOverlayActivity.OcrRecognitionResult) -> Unit,
         onError: (Exception) -> Unit,
         onEmpty: () -> Unit
     ) -> Unit,
-    onShareRequested: (RectF) -> Unit,
-    onCopyRequested: (RectF) -> Unit,
-    onSaveRequested: (RectF) -> Unit,
+    onShareRequested: (RectF, Bitmap?) -> Unit,
+    onCopyRequested: (RectF, Bitmap?) -> Unit,
+    onSaveRequested: (RectF, Bitmap?) -> Unit,
+    onSaveToAppStorageRequested: (RectF, Bitmap?) -> Unit,
     onAddToBatchRequested: (RectF) -> Unit,
     onShareBatchRequested: (RectF?) -> Unit,
     onSaveBatchRequested: (RectF?) -> Unit,
@@ -1109,6 +1154,10 @@ private fun CropOverlayContent(
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
     var isInteracting by remember { mutableStateOf(false) }
     var activeSelectionView by remember { mutableStateOf<SelectionView?>(null) }
+
+    // Image Editing State
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editedCropBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     // Batch State
     var batchCount by remember { mutableIntStateOf(BatchCropManager.getBatchCount(context)) }
@@ -1162,6 +1211,9 @@ private fun CropOverlayContent(
                         onSelectionChanged = { rect, interacting ->
                             selectionRect = rect?.let { RectF(it) }
                             isInteracting = interacting
+                            if (interacting) {
+                                editedCropBitmap = null
+                            }
                             if (interacting && isOcrActive) {
                                 isOcrActive = false
                                 activeSelectionView?.isOcrMode = false
@@ -1203,6 +1255,22 @@ private fun CropOverlayContent(
         val currentRect = selectionRect
         val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
 
+        // Image Editing Modal Dialog
+        if (showEditDialog && currentRect != null) {
+            val bmpToEdit = editedCropBitmap ?: onExtractBitmap(currentRect)
+            if (bmpToEdit != null) {
+                ImageEditDialog(
+                    bitmap = bmpToEdit,
+                    onDismiss = { showEditDialog = false },
+                    onDone = { result ->
+                        editedCropBitmap = result
+                        showEditDialog = false
+                        Toast.makeText(context, "Edits applied", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+        }
+
         // 1b. Circle to Search Interactive OCR Highlight Layer directly over the crop box
         if (!isSimulatingScrollCapture && !showTopPillOnly && isOcrActive && currentRect != null && ocrElements.isNotEmpty()) {
             OcrHighlightOverlay(
@@ -1223,7 +1291,9 @@ private fun CropOverlayContent(
             )
         }
 
-        // 2. Top-Bar Utility Header: Action Buttons on Top Right
+        // 2. Top-Bar Utility Controls:
+        // Left Side: Long Screenshot Button, Gallery Icon (open app temporary gallery)
+        // Right Side: Close Button (X)
         if (!isSimulatingScrollCapture && !showTopPillOnly) {
             Box(
                 modifier = Modifier
@@ -1231,50 +1301,15 @@ private fun CropOverlayContent(
                     .statusBarsPadding()
                     .padding(top = 16.dp, start = 16.dp, end = 16.dp)
             ) {
-                // Top Right Actions Row: Batch Toggle (if active), Long Screenshot (Icon only), Close (✕)
+                // Left Side Controls: Long Screenshot and Gallery Icon
                 Row(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .testTag("top_end_actions_row"),
+                        .align(Alignment.TopStart)
+                        .testTag("top_start_actions_row"),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Collapsible Batch Button (if batch count > 0)
-                    if (isBatchModeEnabled && batchCount > 0) {
-                        Surface(
-                            onClick = { isBatchMenuExpanded = !isBatchMenuExpanded },
-                            shape = RoundedCornerShape(percent = 50),
-                            color = if (isBatchMenuExpanded) Color(0xFFF59E0B) else Color(0xD918202F),
-                            border = BorderStroke(
-                                1.2.dp,
-                                if (isBatchMenuExpanded) Color(0xFFFDE68A) else Color(0x80F59E0B)
-                            ),
-                            tonalElevation = 4.dp,
-                            shadowElevation = 6.dp,
-                            modifier = Modifier
-                                .height(40.dp)
-                                .testTag("btn_toggle_batch_menu")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                BatchStackIcon(
-                                    tint = if (isBatchMenuExpanded) Color(0xFF0F172A) else Color(0xFFFBBF24),
-                                    modifier = Modifier.size(17.dp)
-                                )
-                                Text(
-                                    text = "$batchCount",
-                                    color = if (isBatchMenuExpanded) Color(0xFF0F172A) else Color(0xFFFDE68A),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-
-                    // Long Screenshot Button (Icon only) - toggleable from main app settings
+                    // Long Screenshot Button (toggleable from settings)
                     if (isLongScreenshotEnabled) {
                         IconButton(
                             onClick = {
@@ -1298,140 +1333,51 @@ private fun CropOverlayContent(
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-
-                        // Generous space between long screenshot and close icon
-                        Spacer(modifier = Modifier.width(16.dp))
                     }
 
-                    // Close (✕) Button
+                    // Gallery Icon (opens app temporary gallery directly to Saved section)
                     IconButton(
-                        onClick = onCancelRequested,
+                        onClick = {
+                            val intent = Intent(context, MainActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                putExtra(MainActivity.EXTRA_NAVIGATE_TO, MainActivity.SECTION_SAVED)
+                            }
+                            context.startActivity(intent)
+                            onCancelRequested()
+                        },
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
                             .background(Color(0xD90F172A))
                             .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                            .testTag("btn_cancel_overlay")
+                            .testTag("btn_gallery_top")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.crop_btn_close),
+                            imageVector = Icons.Default.Collections,
+                            contentDescription = stringResource(R.string.crop_btn_gallery),
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
                     }
                 }
-            }
-        }
 
-        // 2b. Batch Status & Actions Bar (collapsible, hidden when overlay triggered, opened on toggle click)
-        AnimatedVisibility(
-            visible = isBatchModeEnabled && isBatchMenuExpanded && batchCount > 0 && ocrResultText == null,
-            enter = fadeIn(tween(180)) + slideInVertically(initialOffsetY = { -it }),
-            exit = fadeOut(tween(120)) + slideOutVertically(targetOffsetY = { -it }),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 64.dp)
-        ) {
-            Surface(
-                shape = RoundedCornerShape(percent = 50),
-                color = Color(0xF218202F),
-                border = BorderStroke(1.2.dp, Color(0x66F59E0B)),
-                tonalElevation = 6.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.testTag("batch_crop_banner")
-            ) {
-                Row(
-                    modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Right Side Control: Close Button (X)
+                IconButton(
+                    onClick = onCancelRequested,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xD90F172A))
+                        .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                        .testTag("btn_cancel_overlay")
                 ) {
-                    BatchStackIcon(tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
-
-                    val bannerTitle = if (hasValidSelection) {
-                        stringResource(R.string.crop_batch_banner_title_with_new, batchCount)
-                    } else {
-                        stringResource(R.string.crop_batch_banner_title, batchCount)
-                    }
-                    Text(
-                        text = bannerTitle,
-                        color = Color(0xFFFDE68A),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.crop_btn_close),
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
-
-                    Spacer(modifier = Modifier.width(2.dp))
-
-                    // Action: Share Batch (icon only, clean without circular blur)
-                    IconButton(
-                        onClick = {
-                            onShareBatchRequested(if (hasValidSelection) currentRect else null)
-                        },
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("btn_share_batch")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = stringResource(R.string.crop_batch_share),
-                            tint = Color(0xFF00E5FF),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-
-                    // Action: Save Batch to Gallery (icon only, clean without circular blur)
-                    IconButton(
-                        onClick = {
-                            onSaveBatchRequested(if (hasValidSelection) currentRect else null)
-                        },
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("btn_save_batch")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = stringResource(R.string.crop_batch_save),
-                            tint = Color(0xFF34D399),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-
-                    // Action: Clear Batch (clean without circular blur)
-                    IconButton(
-                        onClick = {
-                            onClearBatchRequested()
-                            batchCount = 0
-                            isBatchMenuExpanded = false
-                        },
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("btn_clear_batch")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = stringResource(R.string.crop_batch_clear),
-                            tint = Color(0xFFF87171),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-
-                    // Action: Collapse Tab (clean without circular blur)
-                    IconButton(
-                        onClick = {
-                            isBatchMenuExpanded = false
-                        },
-                        modifier = Modifier
-                            .size(28.dp)
-                            .testTag("btn_collapse_batch_menu")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = stringResource(R.string.crop_btn_close),
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
                 }
             }
         }
@@ -1599,7 +1545,7 @@ private fun CropOverlayContent(
                             if (isShareToAiEnabled) {
                                 CropActionCircleButton(
                                     onClick = {
-                                        onGeminiRequested(currentRect)
+                                        onGeminiRequested(currentRect, editedCropBitmap)
                                     },
                                     contentDescription = when (selectedAiModel) {
                                         AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> stringResource(R.string.crop_btn_google_search)
@@ -1618,24 +1564,32 @@ private fun CropOverlayContent(
                                 }
                             }
 
-                            // 3. Add to Batch (Temporary Storage) Button - conditional on Batch Select toggle
-                            if (isBatchModeEnabled) {
-                                CropActionCircleButton(
-                                    onClick = {
-                                        onAddToBatchRequested(currentRect)
-                                        batchCount = BatchCropManager.getBatchCount(context)
-                                    },
-                                    contentDescription = stringResource(R.string.crop_btn_add_to_batch),
-                                    testTag = "btn_add_to_batch_crop"
-                                ) {
-                                    AddToBatchIcon(tint = Color.White)
-                                }
+                            // 3. Edit Button (Image Editing Window)
+                            CropActionCircleButton(
+                                onClick = {
+                                    val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
+                                    if (bmp != null) {
+                                        editedCropBitmap = bmp
+                                        showEditDialog = true
+                                    } else {
+                                        Toast.makeText(context, "Crop area unavailable", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                contentDescription = stringResource(R.string.crop_btn_edit),
+                                testTag = "btn_edit_crop"
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(19.dp)
+                                )
                             }
 
                             // 4. Copy to Clipboard Button
                             CropActionCircleButton(
                                 onClick = {
-                                    onCopyRequested(currentRect)
+                                    onCopyRequested(currentRect, editedCropBitmap)
                                 },
                                 contentDescription = stringResource(R.string.crop_btn_copy),
                                 testTag = "btn_copy_crop"
@@ -1646,11 +1600,7 @@ private fun CropOverlayContent(
                             // 5. Share Button
                             CropActionCircleButton(
                                 onClick = {
-                                    if (isBatchModeEnabled && batchCount > 0) {
-                                        showShareBatchDialog = true
-                                    } else {
-                                        onShareRequested(currentRect)
-                                    }
+                                    onShareRequested(currentRect, editedCropBitmap)
                                 },
                                 contentDescription = stringResource(R.string.crop_btn_share),
                                 testTag = "btn_share_crop"
@@ -1658,19 +1608,88 @@ private fun CropOverlayContent(
                                 ShareNodesIcon(tint = Color.White)
                             }
 
-                            // 6. Save to Gallery Button
-                            CropActionCircleButton(
-                                onClick = {
-                                    if (isBatchModeEnabled && batchCount > 0) {
-                                        showSaveBatchDialog = true
-                                    } else {
-                                        onSaveRequested(currentRect)
-                                    }
-                                },
-                                contentDescription = stringResource(R.string.crop_btn_save),
-                                testTag = "btn_save_crop"
-                            ) {
-                                SaveToGalleryIcon(tint = Color.White)
+                            // 6. Save Button (Dropdown Menu: Save to Device or Save to App Temporary Storage)
+                            var showSaveDropdownMenu by remember { mutableStateOf(false) }
+                            Box {
+                                CropActionCircleButton(
+                                    onClick = {
+                                        showSaveDropdownMenu = true
+                                    },
+                                    contentDescription = stringResource(R.string.crop_btn_save),
+                                    testTag = "btn_save_crop"
+                                ) {
+                                    SaveToGalleryIcon(tint = Color.White)
+                                }
+
+                                DropdownMenu(
+                                    expanded = showSaveDropdownMenu,
+                                    onDismissRequest = { showSaveDropdownMenu = false },
+                                    modifier = Modifier
+                                        .background(Color(0xF20F172A))
+                                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                                                Text(
+                                                    text = stringResource(R.string.save_option_device),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.save_option_device_desc),
+                                                    color = Color(0xFF94A3B8),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = null,
+                                                tint = Color(0xFF38BDF8),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showSaveDropdownMenu = false
+                                            onSaveRequested(currentRect, editedCropBitmap)
+                                        },
+                                        modifier = Modifier.testTag("menu_opt_save_device")
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                                                Text(
+                                                    text = stringResource(R.string.save_option_app_storage),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                )
+                                                Text(
+                                                    text = stringResource(R.string.save_option_app_storage_desc),
+                                                    color = Color(0xFFFBBF24),
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.AccessTime,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFBBF24),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            showSaveDropdownMenu = false
+                                            onSaveToAppStorageRequested(currentRect, editedCropBitmap)
+                                        },
+                                        modifier = Modifier.testTag("menu_opt_save_app_storage")
+                                    )
+                                }
                             }
                         }
                     }
@@ -1986,7 +2005,7 @@ private fun CropOverlayContent(
                         OutlinedButton(
                             onClick = {
                                 showShareBatchDialog = false
-                                onShareRequested(currentRect)
+                                onShareRequested(currentRect, editedCropBitmap)
                             },
                             border = BorderStroke(1.dp, Color(0x66FFFFFF)),
                             shape = RoundedCornerShape(12.dp),
@@ -2045,7 +2064,7 @@ private fun CropOverlayContent(
                         OutlinedButton(
                             onClick = {
                                 showSaveBatchDialog = false
-                                onSaveRequested(currentRect)
+                                onSaveRequested(currentRect, editedCropBitmap)
                             },
                             border = BorderStroke(1.dp, Color(0x66FFFFFF)),
                             shape = RoundedCornerShape(12.dp),

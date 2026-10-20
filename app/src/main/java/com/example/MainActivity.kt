@@ -70,6 +70,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -112,14 +113,28 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_NAVIGATE_TO = "extra_navigate_to"
+        const val SECTION_SAVED = "section_saved"
+    }
+
+    private var initialNavigateTo by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        initialNavigateTo = intent?.getStringExtra(EXTRA_NAVIGATE_TO)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                SnapCropMainScreen()
+                SnapCropMainScreen(navigateTo = initialNavigateTo)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        initialNavigateTo = intent.getStringExtra(EXTRA_NAVIGATE_TO)
     }
 }
 
@@ -127,9 +142,11 @@ class MainActivity : ComponentActivity() {
  * Redesigned Minimal & Non-Technical Home Screen for SnapCrop
  */
 @Composable
-fun SnapCropMainScreen() {
+fun SnapCropMainScreen(navigateTo: String? = null) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scrollState = rememberScrollState()
+    var storageRefreshTrigger by remember { mutableStateOf(System.currentTimeMillis()) }
 
     var isAccessibilityEnabled by remember { mutableStateOf(checkAccessibilityEnabled(context)) }
     var isBatteryIgnored by remember { mutableStateOf(checkBatteryIgnored(context)) }
@@ -154,6 +171,13 @@ fun SnapCropMainScreen() {
         mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
     }
 
+    // Scroll to Saved section if navigated directly from Gallery icon
+    LaunchedEffect(navigateTo) {
+        if (navigateTo == MainActivity.SECTION_SAVED) {
+            scrollState.animateScrollTo(280)
+        }
+    }
+
     // Re-check service & battery permissions whenever user returns to the app
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -165,6 +189,7 @@ fun SnapCropMainScreen() {
                 isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
                 isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
+                storageRefreshTrigger = System.currentTimeMillis()
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
                 }
@@ -189,7 +214,7 @@ fun SnapCropMainScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
@@ -200,6 +225,12 @@ fun SnapCropMainScreen() {
             StatusHeroBanner(
                 isReady = isAllReady,
                 onEnableClick = { openAccessibilitySettings(context) }
+            )
+
+            // Section: Saved (Temporary Storage - 24 Hours Retention)
+            SavedStorageSection(
+                refreshTrigger = storageRefreshTrigger,
+                modifier = Modifier.testTag("saved_temporary_storage_card")
             )
 
             // Section: How to Capture (Triggers)
