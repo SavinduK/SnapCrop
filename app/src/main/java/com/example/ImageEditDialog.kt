@@ -7,6 +7,7 @@ import android.graphics.Path as AndroidPath
 import android.graphics.Typeface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,18 +28,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +78,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -105,7 +115,7 @@ data class TextOverlayItem(
  * Dedicated Image Editing Modal/Window
  *
  * Supported Editing Tools:
- * - Pen Tool: Freehand drawing/annotation with color palette and stroke widths
+ * - Pen Tool: Freehand drawing/annotation with color palette and stroke width circles
  * - Eraser: Erase drawn strokes or clear all annotations
  * - Text Box: Add draggable, customizable text overlays onto the image
  */
@@ -113,7 +123,11 @@ data class TextOverlayItem(
 fun ImageEditDialog(
     bitmap: Bitmap,
     onDismiss: () -> Unit,
-    onDone: (Bitmap) -> Unit
+    onShare: (Bitmap) -> Unit = {},
+    onSaveToDevice: (Bitmap) -> Unit = {},
+    onSaveToTemporary: (Bitmap) -> Unit = {},
+    onCloseDiscard: () -> Unit = onDismiss,
+    onDone: (Bitmap) -> Unit = {}
 ) {
     val density = LocalDensity.current
 
@@ -132,7 +146,7 @@ fun ImageEditDialog(
         )
     }
     var selectedColor by remember { mutableStateOf(penColors[0]) }
-    var strokeWidthDp by remember { mutableFloatStateOf(5f) }
+    var strokeWidthDp by remember { mutableFloatStateOf(6f) }
 
     // Strokes & Text
     val strokes = remember { mutableStateListOf<DrawnStroke>() }
@@ -143,6 +157,10 @@ fun ImageEditDialog(
     var showAddTextDialog by remember { mutableStateOf(false) }
     var textInput by remember { mutableStateOf("") }
     var selectedTextId by remember { mutableStateOf<Long?>(null) }
+
+    // Done actions modal
+    var showDoneActionModal by remember { mutableStateOf(false) }
+    var finishedBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -256,7 +274,8 @@ fun ImageEditDialog(
                                     strokes = strokes,
                                     textOverlays = textOverlays
                                 )
-                                onDone(editedBitmap)
+                                finishedBitmap = editedBitmap
+                                showDoneActionModal = true
                             },
                             shape = RoundedCornerShape(percent = 50),
                             color = Color(0xFF00E5FF),
@@ -518,26 +537,44 @@ fun ImageEditDialog(
                                         }
                                     }
 
-                                    // Stroke width pills
+                                    // Stroke width selector: circles in the selected pencil color
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        listOf(3f to "S", 6f to "M", 12f to "L").forEach { (width, label) ->
-                                            Surface(
-                                                onClick = { strokeWidthDp = width },
-                                                shape = RoundedCornerShape(percent = 50),
-                                                color = if (strokeWidthDp == width) Color(0xFF00E5FF) else Color(0x28FFFFFF),
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Text(
-                                                        text = label,
-                                                        color = if (strokeWidthDp == width) Color(0xFF090D16) else Color.White,
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold
+                                        listOf(
+                                            Triple(3f, 6.dp, "small"),
+                                            Triple(6f, 11.dp, "medium"),
+                                            Triple(12f, 18.dp, "large")
+                                        ).forEach { (width, dotSize, tag) ->
+                                            val isSelected = strokeWidthDp == width
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color(0x3300E5FF) else Color(0x20FFFFFF))
+                                                    .border(
+                                                        width = if (isSelected) 2.dp else 1.dp,
+                                                        color = if (isSelected) Color(0xFF00E5FF) else Color(0x33FFFFFF),
+                                                        shape = CircleShape
                                                     )
-                                                }
+                                                    .clickable { strokeWidthDp = width }
+                                                    .testTag("stroke_size_$tag"),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(dotSize)
+                                                        .clip(CircleShape)
+                                                        .background(selectedColor)
+                                                        .then(
+                                                            if (selectedColor == Color(0xFF0F172A)) {
+                                                                Modifier.border(0.8.dp, Color.White, CircleShape)
+                                                            } else {
+                                                                Modifier
+                                                            }
+                                                        )
+                                                )
                                             }
                                         }
                                     }
@@ -710,6 +747,32 @@ fun ImageEditDialog(
             containerColor = Color(0xFF1E293B)
         )
     }
+
+    // Modal popup after clicking Done: Share, Save (Device or Temporary dropdown), Close (delete & return to selection screen)
+    if (showDoneActionModal && finishedBitmap != null) {
+        EditDoneActionDialog(
+            bitmap = finishedBitmap!!,
+            onShare = {
+                showDoneActionModal = false
+                onShare(finishedBitmap!!)
+            },
+            onSaveToDevice = {
+                showDoneActionModal = false
+                onSaveToDevice(finishedBitmap!!)
+            },
+            onSaveToTemporary = {
+                showDoneActionModal = false
+                onSaveToTemporary(finishedBitmap!!)
+            },
+            onCloseDiscard = {
+                showDoneActionModal = false
+                onCloseDiscard()
+            },
+            onDismiss = {
+                showDoneActionModal = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -826,4 +889,341 @@ private fun renderEditedBitmap(
     }
 
     return result
+}
+
+/**
+ * Done Popup Modal
+ *
+ * Options:
+ * 1. Share: Share edited screenshot directly
+ * 2. Save: Dropdown with Save to Device or Save to App Temporary Storage (24-hour retention)
+ * 3. Close: Delete edits and return back to selection screen
+ */
+@Composable
+fun EditDoneActionDialog(
+    bitmap: Bitmap,
+    onShare: () -> Unit,
+    onSaveToDevice: () -> Unit,
+    onSaveToTemporary: () -> Unit,
+    onCloseDiscard: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var showSaveDropdown by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.90f)
+                .clip(RoundedCornerShape(24.dp))
+                .border(1.2.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+                .testTag("edit_done_popup_modal"),
+            color = Color(0xFF0F172A)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Header: Title and back/close modal button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x3300E5FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Color(0xFF00E5FF),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.editor_popup_title),
+                            color = Color.White,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x20FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Return to edit",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Thumbnail preview of the edited image
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(130.dp)
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "Edited screenshot preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+
+                // 3 Primary Options: Share, Save, Close (Delete edits)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Option 1: Share
+                    Surface(
+                        onClick = onShare,
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0x220284C7),
+                        border = BorderStroke(1.dp, Color(0x660284C7)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_done_share")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF0284C7)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.editor_popup_share),
+                                    color = Color.White,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = stringResource(R.string.editor_popup_share_desc),
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // Option 2: Save (Device or Temporary as dropdown)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Surface(
+                            onClick = { showSaveDropdown = true },
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0x2210B981),
+                            border = BorderStroke(1.dp, Color(0x6610B981)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_done_save")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(R.string.editor_popup_save),
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.editor_popup_save_desc),
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showSaveDropdown,
+                            onDismissRequest = { showSaveDropdown = false },
+                            modifier = Modifier
+                                .background(Color(0xF20F172A))
+                                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.save_option_device),
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.save_option_device_desc),
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = Color(0xFF38BDF8),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showSaveDropdown = false
+                                    onSaveToDevice()
+                                },
+                                modifier = Modifier.testTag("menu_done_save_device")
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.save_option_app_storage),
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.save_option_app_storage_desc),
+                                            color = Color(0xFFFBBF24),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFBBF24),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showSaveDropdown = false
+                                    onSaveToTemporary()
+                                },
+                                modifier = Modifier.testTag("menu_done_save_temporary")
+                            )
+                        }
+                    }
+
+                    // Option 3: Close (Delete edits & return back to selection screen)
+                    Surface(
+                        onClick = onCloseDiscard,
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0x22EF4444),
+                        border = BorderStroke(1.dp, Color(0x66EF4444)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_done_close_delete")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x33EF4444)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteOutline,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF87171),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.editor_popup_close),
+                                    color = Color(0xFFF87171),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = stringResource(R.string.editor_popup_close_desc),
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

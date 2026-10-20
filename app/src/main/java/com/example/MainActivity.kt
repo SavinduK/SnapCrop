@@ -291,22 +291,6 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 testTag = "toggle_share_to_ai"
             )
 
-            // Toggle: Batch Select Mode (Default: ON)
-            ToggleOptionCard(
-                title = stringResource(R.string.feature_batch_select_title),
-                description = stringResource(R.string.feature_batch_select_desc),
-                customIcon = { tint ->
-                    BatchStackIcon(tint = tint, modifier = Modifier.size(22.dp))
-                },
-                iconTint = Color(0xFFFBBF24),
-                isChecked = isBatchSelectEnabled,
-                onCheckedChange = { enabled ->
-                    isBatchSelectEnabled = enabled
-                    CropFeaturePreferenceManager.setBatchSelectEnabled(context, enabled)
-                },
-                testTag = "toggle_batch_select"
-            )
-
             // Toggle: Long Screenshot Button (Default: ON)
             ToggleOptionCard(
                 title = stringResource(R.string.feature_long_screenshot_title),

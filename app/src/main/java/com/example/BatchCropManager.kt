@@ -245,16 +245,24 @@ object BatchCropManager {
 
         val uris = ArrayList<Uri>()
         for (f in files) {
-            try {
-                val uri = FileProvider.getUriForFile(
+            val uri = try {
+                FileProvider.getUriForFile(
                     context,
                     "${context.applicationContext.packageName}.fileprovider",
                     f
                 )
-                uris.add(uri)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to get URI for file: ${f.name}", e)
+            } catch (e1: Exception) {
+                try {
+                    FileProvider.getUriForFile(
+                        context,
+                        "com.aistudio.snapcrop.vxkpzq.fileprovider",
+                        f
+                    )
+                } catch (e2: Exception) {
+                    Uri.fromFile(f)
+                }
             }
+            uris.add(uri)
         }
 
         if (uris.isEmpty()) return null

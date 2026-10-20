@@ -1262,10 +1262,26 @@ private fun CropOverlayContent(
                 ImageEditDialog(
                     bitmap = bmpToEdit,
                     onDismiss = { showEditDialog = false },
+                    onShare = { editedBmp ->
+                        showEditDialog = false
+                        onShareRequested(currentRect, editedBmp)
+                    },
+                    onSaveToDevice = { editedBmp ->
+                        showEditDialog = false
+                        onSaveRequested(currentRect, editedBmp)
+                    },
+                    onSaveToTemporary = { editedBmp ->
+                        showEditDialog = false
+                        onSaveToAppStorageRequested(currentRect, editedBmp)
+                    },
+                    onCloseDiscard = {
+                        editedCropBitmap = null
+                        showEditDialog = false
+                        Toast.makeText(context, context.getString(R.string.toast_edits_discarded), Toast.LENGTH_SHORT).show()
+                    },
                     onDone = { result ->
                         editedCropBitmap = result
                         showEditDialog = false
-                        Toast.makeText(context, "Edits applied", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
@@ -1390,7 +1406,7 @@ private fun CropOverlayContent(
             val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
             val estimatedToolbarWidthDp = if (isOcrActive) 330.dp else (16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1)))
             val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
-            val topSafePx = with(density) { 80.dp.toPx() }
+            val topSafePx = with(density) { 116.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
 
             // Vertical positioning: prefer below selection box, fallback to above or inside
@@ -1403,9 +1419,15 @@ private fun CropOverlayContent(
             }
 
             // Horizontal positioning: centered on selection box, clamped within screen margins
+            // If near top safe area, ensure clearance from top-right Close button (68dp) so Save to Device and Close never overlap
+            val rightMarginPx = if (targetY < with(density) { 135.dp.toPx() }) {
+                with(density) { 68.dp.toPx() }
+            } else {
+                marginPx
+            }
             val targetX = (currentRect.centerX() - toolbarWidthPx / 2f).coerceIn(
                 marginPx,
-                max(marginPx, screenW - toolbarWidthPx - marginPx)
+                max(marginPx, screenW - toolbarWidthPx - rightMarginPx)
             )
 
             AnimatedVisibility(

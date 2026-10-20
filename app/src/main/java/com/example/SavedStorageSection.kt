@@ -271,75 +271,73 @@ fun SavedStorageSection(
                         color = Color(0x3300E5FF),
                         border = BorderStroke(1.dp, Color(0x6600E5FF))
                     ) {
-                        Row(
+                        FlowRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                // 1. Batch Share
-                                Button(
-                                    onClick = {
-                                        val chooser = BatchCropManager.createShareIntentForFiles(context, selectedFiles.toList())
-                                        if (chooser != null) {
-                                            context.startActivity(chooser)
-                                        } else {
-                                            Toast.makeText(context, "Failed to share selected items", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                    shape = RoundedCornerShape(percent = 50),
-                                    modifier = Modifier.testTag("btn_batch_share")
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Share,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "${stringResource(R.string.btn_share_selected)} (${selectedFiles.size})",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                            // 1. Batch Share
+                            Button(
+                                onClick = {
+                                    val chooser = BatchCropManager.createShareIntentForFiles(context, selectedFiles.toList())
+                                    if (chooser != null) {
+                                        context.startActivity(chooser)
+                                    } else {
+                                        Toast.makeText(context, "Failed to share selected items", Toast.LENGTH_SHORT).show()
                                     }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                shape = RoundedCornerShape(percent = 50),
+                                modifier = Modifier.testTag("btn_batch_share")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "${stringResource(R.string.btn_share_selected)} (${selectedFiles.size})",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
+                            }
 
-                                // 2. Batch Save to Device
-                                Button(
-                                    onClick = {
-                                        val count = BatchCropManager.saveMultipleFilesToGallery(context, selectedFiles.toList())
-                                        Toast.makeText(context, "Saved $count screenshots to Device Gallery", Toast.LENGTH_SHORT).show()
-                                        selectedFiles.clear()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                    shape = RoundedCornerShape(percent = 50),
-                                    modifier = Modifier.testTag("btn_batch_save_device")
+                            // 2. Batch Save to Device
+                            Button(
+                                onClick = {
+                                    val count = BatchCropManager.saveMultipleFilesToGallery(context, selectedFiles.toList())
+                                    Toast.makeText(context, "Saved $count screenshots to Device Gallery", Toast.LENGTH_SHORT).show()
+                                    selectedFiles.clear()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                shape = RoundedCornerShape(percent = 50),
+                                modifier = Modifier.testTag("btn_batch_save_device")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "${stringResource(R.string.btn_save_selected_device)} (${selectedFiles.size})",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "${stringResource(R.string.btn_save_selected_device)} (${selectedFiles.size})",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
 
@@ -352,7 +350,7 @@ fun SavedStorageSection(
                                     refreshList()
                                 },
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
                                     .background(Color(0x33EF4444))
                                     .testTag("btn_batch_delete")
@@ -361,6 +359,25 @@ fun SavedStorageSection(
                                     imageVector = Icons.Default.DeleteOutline,
                                     contentDescription = "Delete",
                                     tint = Color(0xFFF87171),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // 4. Close / Deselect Selection
+                            IconButton(
+                                onClick = {
+                                    selectedFiles.clear()
+                                },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x28FFFFFF))
+                                    .testTag("btn_batch_close_selection")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear selection",
+                                    tint = Color.White,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -390,10 +407,14 @@ fun SavedStorageSection(
                                             shape = RoundedCornerShape(14.dp)
                                         )
                                         .clickable {
-                                            if (isSelected) {
-                                                selectedFiles.remove(item.file)
+                                            if (selectedFiles.isNotEmpty()) {
+                                                if (isSelected) {
+                                                    selectedFiles.remove(item.file)
+                                                } else {
+                                                    selectedFiles.add(item.file)
+                                                }
                                             } else {
-                                                selectedFiles.add(item.file)
+                                                previewFile = item.file
                                             }
                                         }
                                         .testTag("saved_item_${item.file.name}")
@@ -421,6 +442,13 @@ fun SavedStorageSection(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
                                             .padding(6.dp)
+                                            .clickable {
+                                                if (isSelected) {
+                                                    selectedFiles.remove(item.file)
+                                                } else {
+                                                    selectedFiles.add(item.file)
+                                                }
+                                            }
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -522,8 +550,50 @@ fun SavedStorageSection(
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
-                        IconButton(onClick = { previewFile = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Save to Device Button
+                            IconButton(
+                                onClick = {
+                                    previewFile?.let { f ->
+                                        val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(f))
+                                        if (count > 0) {
+                                            Toast.makeText(context, "Saved screenshot to Device Gallery", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x3310B981))
+                                    .testTag("btn_preview_save_device")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Save to Device",
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            // Close Button
+                            IconButton(
+                                onClick = { previewFile = null },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x28FFFFFF))
+                                    .testTag("btn_preview_close")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
 
