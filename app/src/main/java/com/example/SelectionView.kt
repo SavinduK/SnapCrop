@@ -110,32 +110,32 @@ open class SelectionView @JvmOverloads constructor(
     )
     private val googleGlowPositions = floatArrayOf(0f, 0.25f, 0.5f, 0.75f, 1f)
 
-    // Outer soft aura glow
+    // Outer soft aura glow (scaled to 0.25 thickness)
     private val glowPaintOuter = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(14f)
+        strokeWidth = dpToPx(3.5f)
         alpha = 65
     }
 
-    // Mid vibrant aura glow
+    // Mid vibrant aura glow (scaled to 0.25 thickness)
     private val glowPaintMid = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(8f)
+        strokeWidth = dpToPx(2f)
         alpha = 135
     }
 
-    // Inner sharp aura glow
+    // Inner sharp aura glow (scaled to 0.25 thickness)
     private val glowPaintInner = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(5f)
+        strokeWidth = dpToPx(1.25f)
         alpha = 200
     }
 
-    // Thin 5dp white box border (Circle to Search signature crisp border)
+    // Crisp white box border (0.25 of previous 5dp = 1.25dp)
     private val whiteBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = dpToPx(5f)
+        strokeWidth = dpToPx(1.25f)
     }
 
     // Edge handle pills (subtle frosted white)

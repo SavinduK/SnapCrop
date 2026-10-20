@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -912,21 +913,25 @@ fun EditDoneActionDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.90f)
-                .clip(RoundedCornerShape(24.dp))
-                .border(1.2.dp, Color(0x33FFFFFF), RoundedCornerShape(24.dp))
+                .fillMaxSize()
+                .background(Color(0xFF090D16))
                 .testTag("edit_done_popup_modal"),
-            color = Color(0xFF0F172A)
+            color = Color(0xFF090D16)
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Header: Title and back/close modal button
@@ -937,11 +942,11 @@ fun EditDoneActionDialog(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0x3300E5FF)),
                             contentAlignment = Alignment.Center
@@ -950,13 +955,13 @@ fun EditDoneActionDialog(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
                                 tint = Color(0xFF00E5FF),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Text(
                             text = stringResource(R.string.editor_popup_title),
                             color = Color.White,
-                            fontSize = 17.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -964,7 +969,7 @@ fun EditDoneActionDialog(
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(Color(0x20FFFFFF))
                     ) {
@@ -972,22 +977,25 @@ fun EditDoneActionDialog(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Return to edit",
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                // Thumbnail preview of the edited image
+                // Expanded middle preview of the edited image in fullscreen view
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = Color(0xFF1E293B),
                     border = BorderStroke(1.dp, Color(0x33FFFFFF)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(130.dp)
+                        .weight(1f)
+                        .padding(vertical = 14.dp)
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(

@@ -271,14 +271,14 @@ fun SavedStorageSection(
                         color = Color(0x3300E5FF),
                         border = BorderStroke(1.dp, Color(0x6600E5FF))
                     ) {
-                        FlowRow(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // 1. Batch Share
+                            // 1. Share
                             Button(
                                 onClick = {
                                     val chooser = BatchCropManager.createShareIntentForFiles(context, selectedFiles.toList())
@@ -290,11 +290,15 @@ fun SavedStorageSection(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                                 shape = RoundedCornerShape(percent = 50),
-                                modifier = Modifier.testTag("btn_batch_share")
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("btn_batch_share"),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Share,
@@ -302,16 +306,17 @@ fun SavedStorageSection(
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = "${stringResource(R.string.btn_share_selected)} (${selectedFiles.size})",
+                                        text = stringResource(R.string.btn_share_selected),
                                         color = Color.White,
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
 
-                            // 2. Batch Save to Device
+                            // 2. Save
                             Button(
                                 onClick = {
                                     val count = BatchCropManager.saveMultipleFilesToGallery(context, selectedFiles.toList())
@@ -320,11 +325,15 @@ fun SavedStorageSection(
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                                 shape = RoundedCornerShape(percent = 50),
-                                modifier = Modifier.testTag("btn_batch_save_device")
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("btn_batch_save_device"),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    horizontalArrangement = Arrangement.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Download,
@@ -332,10 +341,11 @@ fun SavedStorageSection(
                                         tint = Color.White,
                                         modifier = Modifier.size(16.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
-                                        text = "${stringResource(R.string.btn_save_selected_device)} (${selectedFiles.size})",
+                                        text = stringResource(R.string.crop_btn_save),
                                         color = Color.White,
-                                        fontSize = 12.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
