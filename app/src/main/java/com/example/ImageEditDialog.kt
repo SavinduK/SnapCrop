@@ -213,7 +213,7 @@ fun ImageEditDialog(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0x28FFFFFF))
+                            .background(Color(0xFF090D16))
                             .testTag("btn_edit_cancel")
                     ) {
                         Icon(
@@ -253,13 +253,13 @@ fun ImageEditDialog(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
-                                .background(if (strokes.isNotEmpty() || textOverlays.isNotEmpty()) Color(0x28FFFFFF) else Color(0x10FFFFFF))
+                                .background(Color(0xFF090D16))
                                 .testTag("btn_edit_undo")
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Undo,
                                 contentDescription = "Undo",
-                                tint = if (strokes.isNotEmpty() || textOverlays.isNotEmpty()) Color.White else Color(0x55FFFFFF),
+                                tint = Color.White,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
@@ -274,13 +274,13 @@ fun ImageEditDialog(
                             modifier = Modifier
                                 .size(38.dp)
                                 .clip(CircleShape)
-                                .background(if (strokes.isNotEmpty() || textOverlays.isNotEmpty()) Color(0x28FFFFFF) else Color(0x10FFFFFF))
+                                .background(Color(0xFF090D16))
                                 .testTag("btn_edit_clear_all")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteSweep,
                                 contentDescription = "Clear All",
-                                tint = if (strokes.isNotEmpty() || textOverlays.isNotEmpty()) Color(0xFFFF6B6B) else Color(0x55FFFFFF),
+                                tint = if (strokes.isNotEmpty() || textOverlays.isNotEmpty()) Color(0xFFFF6B6B) else Color.White,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
