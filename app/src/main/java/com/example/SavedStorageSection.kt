@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -584,68 +585,6 @@ fun SavedImagesScreen(
                                                 }
                                             }
                                         }
-
-                                        // Individual Quick Actions Bar directly on each card: Share, Save, Delete
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .background(Color(0xFF172033))
-                                                .padding(horizontal = 6.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceEvenly
-                                        ) {
-                                            // Quick Share
-                                            IconButton(
-                                                onClick = {
-                                                    val chooser = BatchCropManager.createShareIntentForFiles(context, listOf(item.file))
-                                                    if (chooser != null) {
-                                                        context.startActivity(chooser)
-                                                    }
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Share,
-                                                    contentDescription = "Share",
-                                                    tint = Color(0xFF38BDF8),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-
-                                            // Quick Save
-                                            IconButton(
-                                                onClick = {
-                                                    val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(item.file))
-                                                    if (count > 0) {
-                                                        Toast.makeText(context, "Saved to Device Gallery", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Download,
-                                                    contentDescription = "Save",
-                                                    tint = Color(0xFF34D399),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-
-                                            // Quick Delete
-                                            IconButton(
-                                                onClick = {
-                                                    BatchCropManager.deleteBatchFiles(context, listOf(item.file))
-                                                    refreshList()
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DeleteOutline,
-                                                    contentDescription = "Delete",
-                                                    tint = Color(0xFFF87171),
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
                                     }
                                 }
                             }
@@ -834,64 +773,73 @@ fun SavedImagePreviewDialog(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // 1. Share Button
-                        IconButton(
-                            onClick = {
-                                val chooser = BatchCropManager.createShareIntentForFiles(context, listOf(file))
-                                if (chooser != null) {
-                                    context.startActivity(chooser)
-                                }
-                            },
+                        // 1. Share Button (clean icon, no circular glow)
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x330284C7))
-                                .testTag("btn_preview_share")
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                        val chooser = BatchCropManager.createShareIntentForFiles(context, listOf(file))
+                                        if (chooser != null) {
+                                            context.startActivity(chooser)
+                                        }
+                                    }
+                                )
+                                .testTag("btn_preview_share"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Share,
                                 contentDescription = "Share",
-                                tint = Color(0xFF38BDF8),
-                                modifier = Modifier.size(18.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        // 2. Save Button
-                        IconButton(
-                            onClick = {
-                                val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(file))
-                                if (count > 0) {
-                                    Toast.makeText(context, "Saved screenshot to Device Gallery", Toast.LENGTH_SHORT).show()
-                                }
-                            },
+                        // 2. Save Button (clean icon, no circular glow)
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x3310B981))
-                                .testTag("btn_preview_save_device")
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                        val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(file))
+                                        if (count > 0) {
+                                            Toast.makeText(context, "Saved screenshot to Device Gallery", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                )
+                                .testTag("btn_preview_save_device"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = "Save",
-                                tint = Color(0xFF34D399),
-                                modifier = Modifier.size(18.dp)
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        // 3. Close Button
-                        IconButton(
-                            onClick = onDismiss,
+                        // 3. Close Button (clean icon, no circular glow)
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x28FFFFFF))
-                                .testTag("btn_preview_close")
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onDismiss
+                                )
+                                .testTag("btn_preview_close"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }

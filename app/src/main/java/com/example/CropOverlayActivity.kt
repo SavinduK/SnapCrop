@@ -61,6 +61,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.zIndex
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
@@ -1203,7 +1204,7 @@ private fun CropOverlayContent(
         }
 
         // 1. Custom Interactive Selection View or Clean Un-obscured Capture Display
-        if (!isSimulatingScrollCapture && !showTopPillOnly) {
+        if (!isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             AndroidView(
                 factory = { ctx ->
                     SelectionView(ctx).apply {
@@ -1239,7 +1240,7 @@ private fun CropOverlayContent(
                 },
                 modifier = Modifier.fillMaxSize()
             )
-        } else {
+        } else if (!showEditDialog) {
             // Clean view showing the un-obscured page without any interfering elements
             val cleanBmp = simulationStitchedBitmap ?: screenshot ?: ScreenshotHolder.bitmap
             if (cleanBmp != null) {
@@ -1255,40 +1256,8 @@ private fun CropOverlayContent(
         val currentRect = selectionRect
         val hasValidSelection = currentRect != null && currentRect.width() >= 36f && currentRect.height() >= 36f
 
-        // Image Editing Modal Dialog
-        if (showEditDialog && currentRect != null) {
-            val bmpToEdit = editedCropBitmap ?: onExtractBitmap(currentRect)
-            if (bmpToEdit != null) {
-                ImageEditDialog(
-                    bitmap = bmpToEdit,
-                    onDismiss = { showEditDialog = false },
-                    onShare = { editedBmp ->
-                        showEditDialog = false
-                        onShareRequested(currentRect, editedBmp)
-                    },
-                    onSaveToDevice = { editedBmp ->
-                        showEditDialog = false
-                        onSaveRequested(currentRect, editedBmp)
-                    },
-                    onSaveToTemporary = { editedBmp ->
-                        showEditDialog = false
-                        onSaveToAppStorageRequested(currentRect, editedBmp)
-                    },
-                    onCloseDiscard = {
-                        editedCropBitmap = null
-                        showEditDialog = false
-                        Toast.makeText(context, context.getString(R.string.toast_edits_discarded), Toast.LENGTH_SHORT).show()
-                    },
-                    onDone = { result ->
-                        editedCropBitmap = result
-                        showEditDialog = false
-                    }
-                )
-            }
-        }
-
         // 1b. Circle to Search Interactive OCR Highlight Layer directly over the crop box
-        if (!isSimulatingScrollCapture && !showTopPillOnly && isOcrActive && currentRect != null && ocrElements.isNotEmpty()) {
+        if (!isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog && isOcrActive && currentRect != null && ocrElements.isNotEmpty()) {
             OcrHighlightOverlay(
                 selectionRect = currentRect,
                 elements = ocrElements,
@@ -1310,7 +1279,7 @@ private fun CropOverlayContent(
         // 2. Top-Bar Utility Controls:
         // Left Side: Long Screenshot Button, Gallery Icon (open app temporary gallery)
         // Right Side: Close Button (X)
-        if (!isSimulatingScrollCapture && !showTopPillOnly) {
+        if (!isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1400,7 +1369,7 @@ private fun CropOverlayContent(
 
         // 3. Floating Action Dock (Select Text, Gemini/AI, Add to Batch, Copy, Share, Save) OR Circle to Search OCR Action Dock
         // Positioned contextually below (or above) the bounding box
-        if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly) {
+        if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
             val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
@@ -1722,7 +1691,7 @@ private fun CropOverlayContent(
 
         // 4. Samsung-Style Floating Scroll Capture Toolbar (interactive scroll capture)
         AnimatedVisibility(
-            visible = isSimulatingScrollCapture,
+            visible = isSimulatingScrollCapture && !showEditDialog,
             enter = fadeIn(tween(160)) + slideInVertically { it / 2 },
             exit = fadeOut(tween(100)) + slideOutVertically { it / 2 },
             modifier = Modifier
@@ -1837,7 +1806,7 @@ private fun CropOverlayContent(
 
         // 5. Small Horizontal Pill-Shaped Overlay on the TOP
         AnimatedVisibility(
-            visible = showTopPillOnly,
+            visible = showTopPillOnly && !showEditDialog,
             enter = fadeIn(tween(180)) + slideInVertically { -it },
             exit = fadeOut(tween(120)) + slideOutVertically { -it },
             modifier = Modifier
@@ -2155,6 +2124,41 @@ private fun CropOverlayContent(
                     showFullSizeViewer = false
                 }
             )
+        }
+
+        // 6. Fullscreen Image Editor Screen
+        if (showEditDialog && editedCropBitmap != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(100f)
+            ) {
+                ImageEditDialog(
+                    bitmap = editedCropBitmap!!,
+                    onDismiss = {
+                        showEditDialog = false
+                    },
+                    onCloseDiscard = {
+                        showEditDialog = false
+                    },
+                    onDone = { finalBitmap ->
+                        editedCropBitmap = finalBitmap
+                        showEditDialog = false
+                    },
+                    onShare = { finalBitmap ->
+                        showEditDialog = false
+                        currentRect?.let { r -> onShareRequested(r, finalBitmap) }
+                    },
+                    onSaveToDevice = { finalBitmap ->
+                        showEditDialog = false
+                        currentRect?.let { r -> onSaveRequested(r, finalBitmap) }
+                    },
+                    onSaveToTemporary = { finalBitmap ->
+                        showEditDialog = false
+                        currentRect?.let { r -> onSaveToAppStorageRequested(r, finalBitmap) }
+                    }
+                )
+            }
         }
     }
 }
