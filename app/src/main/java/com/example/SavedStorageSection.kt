@@ -5,17 +5,24 @@ import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -25,12 +32,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -132,29 +141,12 @@ fun SavedImagesNavCard(
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.section_saved_storage_title),
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Surface(
-                            shape = RoundedCornerShape(percent = 50),
-                            color = if (count > 0) Color(0x3300E5FF) else Color(0x22FFFFFF)
-                        ) {
-                            Text(
-                                text = if (count > 0) "$count Saved" else "Empty",
-                                color = if (count > 0) CyanPrimary else Color(0xFF94A3B8),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
+                    Text(
+                        text = stringResource(R.string.section_saved_storage_title),
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         text = stringResource(R.string.section_saved_storage_policy),
                         color = Color(0xFF94A3B8),
@@ -189,6 +181,7 @@ fun SavedImagesNavCard(
  * Includes all Share and Save buttons, single unified button row, individual quick actions,
  * and high-resolution preview modal.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SavedImagesScreen(
     onBack: () -> Unit,
@@ -209,7 +202,15 @@ fun SavedImagesScreen(
         refreshList()
     }
 
-    BackHandler { onBack() }
+    val isSelectionMode = selectedFiles.isNotEmpty()
+
+    BackHandler {
+        if (selectedFiles.isNotEmpty()) {
+            selectedFiles.clear()
+        } else {
+            onBack()
+        }
+    }
 
     Scaffold(
         modifier = modifier
@@ -223,94 +224,162 @@ fun SavedImagesScreen(
                 tonalElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .height(44.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.weight(1f)
+                    // Normal mode top bar
+                    AnimatedVisibility(
+                        visible = !isSelectionMode,
+                        enter = fadeIn(animationSpec = tween(180)),
+                        exit = fadeOut(animationSpec = tween(150))
                     ) {
-                        IconButton(
-                            onClick = onBack,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x28FFFFFF))
-                                .testTag("btn_back_saved_images")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back to Home",
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
-                        Column {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                IconButton(
+                                    onClick = onBack,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x28FFFFFF))
+                                        .testTag("btn_back_saved_images")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Back to Home",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
                                 Text(
                                     text = stringResource(R.string.section_saved_storage_title),
                                     color = Color.White,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                if (items.isNotEmpty()) {
-                                    Surface(
-                                        shape = RoundedCornerShape(percent = 50),
-                                        color = Color(0x33FBBF24)
-                                    ) {
-                                        Text(
-                                            text = "${items.size}",
-                                            color = Color(0xFFFDE68A),
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
                             }
-                            Text(
-                                text = stringResource(R.string.section_saved_storage_policy),
-                                color = Color(0xFF94A3B8),
-                                fontSize = 12.sp
-                            )
+
+                            IconButton(
+                                onClick = { refreshList() },
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x18FFFFFF))
+                                    .testTag("btn_refresh_saved_images")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
                         }
                     }
 
-                    IconButton(
-                        onClick = { refreshList() },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x18FFFFFF))
-                            .testTag("btn_refresh_saved_images")
+                    // Selection mode top bar
+                    AnimatedVisibility(
+                        visible = isSelectionMode,
+                        enter = fadeIn(animationSpec = tween(180)),
+                        exit = fadeOut(animationSpec = tween(150))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = Color.White,
-                            modifier = Modifier.size(19.dp)
-                        )
+                        val allSelected = items.isNotEmpty() && selectedFiles.size == items.size
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Top left: a rounded dark translucent pill containing a circular select-all checkbox and the selected count
+                            Surface(
+                                shape = RoundedCornerShape(percent = 50),
+                                color = Color(0xDD1E293B),
+                                border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                                modifier = Modifier.testTag("pill_selection_count")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(if (allSelected) CyanPrimary else Color(0x33FFFFFF))
+                                            .border(
+                                                width = 1.5.dp,
+                                                color = if (allSelected) CyanPrimary else Color.White,
+                                                shape = CircleShape
+                                            )
+                                            .clickable {
+                                                if (allSelected) {
+                                                    selectedFiles.clear()
+                                                } else {
+                                                    selectedFiles.clear()
+                                                    selectedFiles.addAll(items.map { it.file })
+                                                }
+                                            }
+                                            .testTag("btn_select_all_saved"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (allSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Select All",
+                                                tint = Color(0xFF090D16),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "${selectedFiles.size}",
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.testTag("text_selected_count")
+                                    )
+                                }
+                            }
+
+                            // Top right: a rounded dark translucent "Cancel" pill that exits selection mode and clears the selection
+                            Surface(
+                                onClick = { selectedFiles.clear() },
+                                shape = RoundedCornerShape(percent = 50),
+                                color = Color(0xDD1E293B),
+                                border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                                modifier = Modifier.testTag("btn_cancel_selection")
+                            ) {
+                                Text(
+                                    text = "Cancel",
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (items.isEmpty()) {
                 Box(
@@ -360,161 +429,15 @@ fun SavedImagesScreen(
                     }
                 }
             } else {
-                // Single Button Row: Select All, Share, Save, Delete
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF1E293B),
-                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val allSelected = selectedFiles.isNotEmpty() && selectedFiles.size == items.size
-
-                        // 1. Select All / Deselect All
-                        Surface(
-                            onClick = {
-                                if (allSelected) {
-                                    selectedFiles.clear()
-                                } else {
-                                    selectedFiles.clear()
-                                    selectedFiles.addAll(items.map { it.file })
-                                }
-                            },
-                            shape = RoundedCornerShape(percent = 50),
-                            color = if (allSelected) Color(0x3300E5FF) else Color(0x22FFFFFF),
-                            border = BorderStroke(1.dp, if (allSelected) CyanPrimary else Color(0x33FFFFFF)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .testTag("btn_select_all_saved")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (allSelected) Icons.Default.Check else Icons.Default.Collections,
-                                    contentDescription = null,
-                                    tint = if (allSelected) CyanPrimary else Color.White,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Text(
-                                    text = if (allSelected) "Deselect" else "Select All",
-                                    color = if (allSelected) CyanPrimary else Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        val targetFiles = if (selectedFiles.isNotEmpty()) selectedFiles.toList() else items.map { it.file }
-
-                        // 2. Share
-                        Button(
-                            onClick = {
-                                val chooser = BatchCropManager.createShareIntentForFiles(context, targetFiles)
-                                if (chooser != null) {
-                                    context.startActivity(chooser)
-                                } else {
-                                    Toast.makeText(context, "Failed to share items", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                            shape = RoundedCornerShape(percent = 50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .testTag("btn_batch_share"),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Share,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Share",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // 3. Save (renamed from "Save to Device" to "Save")
-                        Button(
-                            onClick = {
-                                val count = BatchCropManager.saveMultipleFilesToGallery(context, targetFiles)
-                                Toast.makeText(context, "Saved $count screenshots to Gallery", Toast.LENGTH_SHORT).show()
-                                selectedFiles.clear()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                            shape = RoundedCornerShape(percent = 50),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .testTag("btn_batch_save_device"),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Download,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Save",
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // 4. Delete
-                        IconButton(
-                            onClick = {
-                                val deletedCount = BatchCropManager.deleteBatchFiles(context, targetFiles)
-                                Toast.makeText(context, "Removed $deletedCount item(s)", Toast.LENGTH_SHORT).show()
-                                selectedFiles.clear()
-                                refreshList()
-                            },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x33EF4444))
-                                .testTag("btn_batch_delete")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = "Delete",
-                                tint = Color(0xFFF87171),
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Grid of items with individual quick action buttons
+                // Grid of items
                 val rows = items.chunked(2)
                 LazyColumn(
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 12.dp,
+                        end = 16.dp,
+                        bottom = if (isSelectionMode) 100.dp else 16.dp
+                    ),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -544,7 +467,30 @@ fun SavedImagesScreen(
                                                 .fillMaxWidth()
                                                 .aspectRatio(1.15f)
                                                 .background(Color(0xFF0F172A))
-                                                .clickable { previewFile = item.file }
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        if (isSelectionMode) {
+                                                            if (isSelected) {
+                                                                selectedFiles.remove(item.file)
+                                                            } else {
+                                                                selectedFiles.add(item.file)
+                                                            }
+                                                        } else {
+                                                            previewFile = item.file
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        if (!isSelectionMode) {
+                                                            selectedFiles.add(item.file)
+                                                        } else {
+                                                            if (isSelected) {
+                                                                selectedFiles.remove(item.file)
+                                                            } else {
+                                                                selectedFiles.add(item.file)
+                                                            }
+                                                        }
+                                                    }
+                                                )
                                         ) {
                                             val bitmap = remember(item.file.lastModified()) {
                                                 try {
@@ -563,34 +509,41 @@ fun SavedImagesScreen(
                                                 )
                                             }
 
-                                            // Checkbox Overlay Top End
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .padding(6.dp)
-                                                    .clickable {
-                                                        if (isSelected) {
-                                                            selectedFiles.remove(item.file)
-                                                        } else {
-                                                            selectedFiles.add(item.file)
-                                                        }
-                                                    }
-                                            ) {
+                                            // Selection circle: visible ONLY in selection mode
+                                            if (isSelectionMode) {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(24.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isSelected) CyanPrimary else Color(0x99000000))
-                                                        .border(1.dp, if (isSelected) CyanPrimary else Color.White, CircleShape),
-                                                    contentAlignment = Alignment.Center
+                                                        .align(Alignment.TopEnd)
+                                                        .padding(6.dp)
+                                                        .clickable {
+                                                            if (isSelected) {
+                                                                selectedFiles.remove(item.file)
+                                                            } else {
+                                                                selectedFiles.add(item.file)
+                                                            }
+                                                        }
+                                                        .testTag("checkbox_select_${item.file.name}")
                                                 ) {
-                                                    if (isSelected) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Check,
-                                                            contentDescription = "Selected",
-                                                            tint = Color(0xFF090D16),
-                                                            modifier = Modifier.size(15.dp)
-                                                        )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(24.dp)
+                                                            .clip(CircleShape)
+                                                            .background(if (isSelected) CyanPrimary else Color(0x99000000))
+                                                            .border(
+                                                                width = 1.5.dp,
+                                                                color = if (isSelected) CyanPrimary else Color.White,
+                                                                shape = CircleShape
+                                                            ),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        if (isSelected) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Check,
+                                                                contentDescription = "Selected",
+                                                                tint = Color(0xFF090D16),
+                                                                modifier = Modifier.size(15.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -702,6 +655,87 @@ fun SavedImagesScreen(
                         }
                     }
                 }
+
+                // Floating rounded pill-shaped bar, centered and inset from screen edges
+                AnimatedVisibility(
+                    visible = isSelectionMode,
+                    enter = slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(durationMillis = 200)),
+                    exit = slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 180)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp, vertical = 20.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(percent = 50),
+                        color = Color(0xF21E293B),
+                        shadowElevation = 10.dp,
+                        tonalElevation = 6.dp,
+                        border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 420.dp)
+                            .testTag("floating_selection_bar")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            // 1. Share
+                            FloatingBarActionItem(
+                                icon = Icons.Default.Share,
+                                label = "Share",
+                                testTag = "btn_batch_share",
+                                onClick = {
+                                    val targetFiles = selectedFiles.toList()
+                                    val chooser = BatchCropManager.createShareIntentForFiles(context, targetFiles)
+                                    if (chooser != null) {
+                                        context.startActivity(chooser)
+                                    } else {
+                                        Toast.makeText(context, "Failed to share items", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+
+                            // 2. Save
+                            FloatingBarActionItem(
+                                icon = Icons.Default.Download,
+                                label = "Save",
+                                testTag = "btn_batch_save_device",
+                                onClick = {
+                                    val targetFiles = selectedFiles.toList()
+                                    val count = BatchCropManager.saveMultipleFilesToGallery(context, targetFiles)
+                                    Toast.makeText(context, "Saved $count screenshots to Gallery", Toast.LENGTH_SHORT).show()
+                                    selectedFiles.clear()
+                                }
+                            )
+
+                            // 3. Delete
+                            FloatingBarActionItem(
+                                icon = Icons.Default.DeleteOutline,
+                                label = "Delete",
+                                testTag = "btn_batch_delete",
+                                tint = Color(0xFFF87171),
+                                onClick = {
+                                    val targetFiles = selectedFiles.toList()
+                                    val deletedCount = BatchCropManager.deleteBatchFiles(context, targetFiles)
+                                    Toast.makeText(context, "Removed $deletedCount item(s)", Toast.LENGTH_SHORT).show()
+                                    selectedFiles.clear()
+                                    refreshList()
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -715,6 +749,39 @@ fun SavedImagesScreen(
                 previewFile = null
                 refreshList()
             }
+        )
+    }
+}
+
+@Composable
+private fun FloatingBarActionItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    testTag: String,
+    onClick: () -> Unit,
+    tint: Color = Color.White,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag(testTag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier.size(24.dp)
+        )
+        Text(
+            text = label,
+            color = tint,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
