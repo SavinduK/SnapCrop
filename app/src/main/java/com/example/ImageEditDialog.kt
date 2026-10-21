@@ -27,6 +27,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.BorderStroke
@@ -42,6 +47,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.AlertDialog
@@ -103,22 +109,28 @@ data class DrawnStroke(
     val strokeWidthDp: Float
 )
 
-data class TextOverlayItem(
+class TextOverlayItem(
     val id: Long = System.currentTimeMillis() + (0..1000).random(),
-    var text: String,
-    var xPercent: Float, // 0..1 relative to canvas width
-    var yPercent: Float, // 0..1 relative to canvas height
-    var color: Color = Color.White,
-    var fontSizeSp: Float = 20f
-)
+    text: String,
+    xPercent: Float, // 0..1 relative to canvas width
+    yPercent: Float, // 0..1 relative to canvas height
+    color: Color = Color.White,
+    fontSizeSp: Float = 20f
+) {
+    var text by mutableStateOf(text)
+    var xPercent by mutableFloatStateOf(xPercent)
+    var yPercent by mutableFloatStateOf(yPercent)
+    var color by mutableStateOf(color)
+    var fontSizeSp by mutableFloatStateOf(fontSizeSp)
+}
 
 /**
- * Dedicated Image Editing Modal/Window
+ * Dedicated Image Editing Fullscreen Screen
  *
  * Supported Editing Tools:
  * - Pen Tool: Freehand drawing/annotation with color palette and stroke width circles
  * - Eraser: Erase drawn strokes or clear all annotations
- * - Text Box: Add draggable, customizable text overlays onto the image
+ * - Text Box: Add draggable, moveable, customizable text overlays onto the image
  */
 @Composable
 fun ImageEditDialog(
@@ -163,25 +175,31 @@ fun ImageEditDialog(
     var showDoneActionModal by remember { mutableStateOf(false) }
     var finishedBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
+    BackHandler {
+        if (showDoneActionModal) {
+            showDoneActionModal = false
+        } else {
+            onDismiss()
+        }
+    }
+
+    val insetsTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val safeTopPadding = maxOf(insetsTop, 36.dp)
+
+    val insetsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val safeBottomPadding = maxOf(insetsBottom, 28.dp) + 8.dp
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF090D16))
+            .testTag("image_editing_window")
     ) {
-        Surface(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF090D16))
-                .testTag("image_editing_window"),
-            color = Color(0xFF090D16)
+                .padding(top = safeTopPadding)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-            ) {
                 // Top Bar: Cancel, Title, Undo, Clear, Done
                 Row(
                     modifier = Modifier
@@ -441,36 +459,52 @@ fun ImageEditDialog(
                             }
                         }
 
-                        // Text Overlays on top of the image
+                        // Text Overlays on top of the image (Moveable)
                         for (item in textOverlays) {
-                            val posX = (item.xPercent * canvasW).coerceIn(0f, canvasW - 50f)
-                            val posY = (item.yPercent * canvasH).coerceIn(0f, canvasH - 30f)
-
                             Box(
                                 modifier = Modifier
-                                    .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0x99000000))
-                                    .border(1.dp, if (selectedTextId == item.id) Color(0xFF00E5FF) else Color(0x44FFFFFF), RoundedCornerShape(6.dp))
+                                    .offset {
+                                        val posX = (item.xPercent * canvasW).coerceIn(0f, (canvasW - 40f).coerceAtLeast(0f))
+                                        val posY = (item.yPercent * canvasH).coerceIn(0f, (canvasH - 30f).coerceAtLeast(0f))
+                                        IntOffset(posX.roundToInt(), posY.roundToInt())
+                                    }
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xD9090D16))
+                                    .border(
+                                        width = if (selectedTextId == item.id) 2.dp else 1.dp,
+                                        color = if (selectedTextId == item.id) Color(0xFF00E5FF) else Color(0x66FFFFFF),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
                                     .pointerInput(item.id) {
-                                        detectDragGestures { change, dragAmount ->
-                                            change.consume()
-                                            selectedTextId = item.id
-                                            val newX = ((item.xPercent * canvasW) + dragAmount.x) / canvasW
-                                            val newY = ((item.yPercent * canvasH) + dragAmount.y) / canvasH
-                                            item.xPercent = newX.coerceIn(0.02f, 0.95f)
-                                            item.yPercent = newY.coerceIn(0.02f, 0.95f)
-                                        }
+                                        detectDragGestures(
+                                            onDragStart = {
+                                                selectedTextId = item.id
+                                            },
+                                            onDrag = { change, dragAmount ->
+                                                change.consume()
+                                                selectedTextId = item.id
+                                                val newX = (item.xPercent * canvasW + dragAmount.x) / canvasW
+                                                val newY = (item.yPercent * canvasH + dragAmount.y) / canvasH
+                                                item.xPercent = newX.coerceIn(0.01f, 0.92f)
+                                                item.yPercent = newY.coerceIn(0.01f, 0.92f)
+                                            }
+                                        )
                                     }
                                     .clickable {
                                         selectedTextId = item.id
                                     }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
+                                    Icon(
+                                        imageVector = Icons.Default.OpenWith,
+                                        contentDescription = "Move text",
+                                        tint = if (selectedTextId == item.id) Color(0xFF00E5FF) else Color(0x99FFFFFF),
+                                        modifier = Modifier.size(15.dp)
+                                    )
                                     Text(
                                         text = item.text,
                                         color = item.color,
@@ -496,16 +530,18 @@ fun ImageEditDialog(
                     }
                 }
 
-                // Bottom Tools Dock
+                // Bottom Tools Dock with generous safe bottom padding
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
                     color = Color(0xFF131B2E),
                     tonalElevation = 6.dp
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = safeBottomPadding),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -673,7 +709,6 @@ fun ImageEditDialog(
                 }
             }
         }
-    }
 
     // Modal to type custom text
     if (showAddTextDialog) {
@@ -911,29 +946,27 @@ fun EditDoneActionDialog(
 ) {
     var showSaveDropdown by remember { mutableStateOf(false) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
+    val insetsTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val safeTopPadding = maxOf(insetsTop, 36.dp)
+
+    val insetsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val safeBottomPadding = maxOf(insetsBottom, 28.dp) + 8.dp
+
+    BackHandler { onDismiss() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF090D16))
+            .testTag("edit_done_popup_modal")
     ) {
-        Surface(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF090D16))
-                .testTag("edit_done_popup_modal"),
-            color = Color(0xFF090D16)
+                .padding(start = 20.dp, end = 20.dp, top = safeTopPadding, bottom = safeBottomPadding),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
                 // Header: Title and back/close modal button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1234,4 +1267,3 @@ fun EditDoneActionDialog(
             }
         }
     }
-}

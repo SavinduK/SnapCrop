@@ -138,6 +138,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class MainScreenDestination {
+    HOME,
+    SAVED_IMAGES
+}
+
 /**
  * Redesigned Minimal & Non-Technical Home Screen for SnapCrop
  */
@@ -171,10 +176,13 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
         mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
     }
 
-    // Scroll to Saved section if navigated directly from Gallery icon
+    var currentDestination by remember {
+        mutableStateOf(if (navigateTo == MainActivity.SECTION_SAVED) MainScreenDestination.SAVED_IMAGES else MainScreenDestination.HOME)
+    }
+
     LaunchedEffect(navigateTo) {
         if (navigateTo == MainActivity.SECTION_SAVED) {
-            scrollState.animateScrollTo(280)
+            currentDestination = MainScreenDestination.SAVED_IMAGES
         }
     }
 
@@ -203,37 +211,43 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
 
     val isAllReady = isAccessibilityEnabled
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("setup_screen"),
-        contentWindowInsets = WindowInsets.safeDrawing,
-        containerColor = SlateDarkBg
-    ) { innerPadding ->
-        Column(
+    if (currentDestination == MainScreenDestination.SAVED_IMAGES) {
+        SavedImagesScreen(
+            onBack = { currentDestination = MainScreenDestination.HOME },
+            refreshTrigger = storageRefreshTrigger
+        )
+    } else {
+        Scaffold(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-            // Header: Clean Branding & Global Status Pill
-            AppHeader(isReady = isAllReady)
+                .testTag("setup_screen"),
+            contentWindowInsets = WindowInsets.safeDrawing,
+            containerColor = SlateDarkBg
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Header: Clean Branding & Global Status Pill
+                AppHeader(isReady = isAllReady)
 
-            // Status Banner: Welcoming, friendly, and non-technical
-            StatusHeroBanner(
-                isReady = isAllReady,
-                onEnableClick = { openAccessibilitySettings(context) }
-            )
+                // Status Banner: Welcoming, friendly, and non-technical
+                StatusHeroBanner(
+                    isReady = isAllReady,
+                    onEnableClick = { openAccessibilitySettings(context) }
+                )
 
-            // Section: Saved (Temporary Storage - 24 Hours Retention)
-            SavedStorageSection(
-                refreshTrigger = storageRefreshTrigger,
-                modifier = Modifier.testTag("saved_temporary_storage_card")
-            )
+                // Section: Saved Images Navigation Card (Opens dedicated separate screen)
+                SavedImagesNavCard(
+                    count = BatchCropManager.getBatchCount(context),
+                    onClick = { currentDestination = MainScreenDestination.SAVED_IMAGES }
+                )
 
-            // Section: How to Capture (Triggers)
+                // Section: How to Capture (Triggers)
             Text(
                 text = stringResource(R.string.section_how_to_capture),
                 color = TextPrimary,
@@ -412,6 +426,7 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
             Spacer(modifier = Modifier.height(18.dp))
         }
     }
+}
 }
 
 @Composable

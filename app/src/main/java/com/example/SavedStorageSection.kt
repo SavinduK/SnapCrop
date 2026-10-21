@@ -3,6 +3,7 @@ package com.example
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,38 +16,45 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,10 +76,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.ElectricBlue
 import com.example.ui.theme.SlateBorder
 import com.example.ui.theme.SlateDarkBg
-import com.example.ui.theme.SlateSurface
 import com.example.ui.theme.SlateSurfaceCard
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
@@ -80,15 +86,791 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
- * Temporary App Storage Section
- *
- * Displays items saved to app temporary storage with a 24-hour retention policy.
- * Provides batch/multi-select actions to:
- * - Share selected items
- * - Save selected items to device gallery
- * - Delete items
+ * Entry Card shown on the Main Screen.
+ * Displays temporary screenshots count and navigates to the dedicated Saved Images screen.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SavedImagesNavCard(
+    count: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("card_nav_saved_images"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = SlateSurfaceCard),
+        border = BorderStroke(1.2.dp, SlateBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0x33FBBF24)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Collections,
+                        contentDescription = null,
+                        tint = Color(0xFFFBBF24),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.section_saved_storage_title),
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(percent = 50),
+                            color = if (count > 0) Color(0x3300E5FF) else Color(0x22FFFFFF)
+                        ) {
+                            Text(
+                                text = if (count > 0) "$count Saved" else "Empty",
+                                color = if (count > 0) CyanPrimary else Color(0xFF94A3B8),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.section_saved_storage_policy),
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "Open",
+                    color = CyanPrimary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = "Open Saved Screenshots",
+                    tint = CyanPrimary,
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated Fullscreen Screen for Saved Images.
+ * Includes all Share and Save buttons, single unified button row, individual quick actions,
+ * and high-resolution preview modal.
+ */
+@Composable
+fun SavedImagesScreen(
+    onBack: () -> Unit,
+    refreshTrigger: Long = 0L,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var items by remember { mutableStateOf<List<BatchCropManager.TemporaryScreenshotItem>>(emptyList()) }
+    val selectedFiles = remember { mutableStateListOf<File>() }
+    var previewFile by remember { mutableStateOf<File?>(null) }
+
+    fun refreshList() {
+        items = BatchCropManager.getTemporaryItems(context)
+        selectedFiles.retainAll(items.map { it.file })
+    }
+
+    LaunchedEffect(refreshTrigger) {
+        refreshList()
+    }
+
+    BackHandler { onBack() }
+
+    Scaffold(
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("saved_images_screen"),
+        contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = SlateDarkBg,
+        topBar = {
+            Surface(
+                color = SlateSurfaceCard,
+                tonalElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x28FFFFFF))
+                                .testTag("btn_back_saved_images")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back to Home",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.section_saved_storage_title),
+                                    color = Color.White,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (items.isNotEmpty()) {
+                                    Surface(
+                                        shape = RoundedCornerShape(percent = 50),
+                                        color = Color(0x33FBBF24)
+                                    ) {
+                                        Text(
+                                            text = "${items.size}",
+                                            color = Color(0xFFFDE68A),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = stringResource(R.string.section_saved_storage_policy),
+                                color = Color(0xFF94A3B8),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = { refreshList() },
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x18FFFFFF))
+                            .testTag("btn_refresh_saved_images")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (items.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x22FBBF24)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Collections,
+                                contentDescription = null,
+                                tint = Color(0xFFFBBF24),
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.saved_storage_empty_title),
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(R.string.saved_storage_empty_desc),
+                            color = Color(0xFF94A3B8),
+                            fontSize = 13.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onBack,
+                            colors = ButtonDefaults.buttonColors(containerColor = CyanPrimary),
+                            shape = RoundedCornerShape(percent = 50)
+                        ) {
+                            Text("Back to Home", color = Color(0xFF090D16), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                // Single Button Row: Select All, Share, Save, Delete
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val allSelected = selectedFiles.isNotEmpty() && selectedFiles.size == items.size
+
+                        // 1. Select All / Deselect All
+                        Surface(
+                            onClick = {
+                                if (allSelected) {
+                                    selectedFiles.clear()
+                                } else {
+                                    selectedFiles.clear()
+                                    selectedFiles.addAll(items.map { it.file })
+                                }
+                            },
+                            shape = RoundedCornerShape(percent = 50),
+                            color = if (allSelected) Color(0x3300E5FF) else Color(0x22FFFFFF),
+                            border = BorderStroke(1.dp, if (allSelected) CyanPrimary else Color(0x33FFFFFF)),
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("btn_select_all_saved")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (allSelected) Icons.Default.Check else Icons.Default.Collections,
+                                    contentDescription = null,
+                                    tint = if (allSelected) CyanPrimary else Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = if (allSelected) "Deselect" else "Select All",
+                                    color = if (allSelected) CyanPrimary else Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        val targetFiles = if (selectedFiles.isNotEmpty()) selectedFiles.toList() else items.map { it.file }
+
+                        // 2. Share
+                        Button(
+                            onClick = {
+                                val chooser = BatchCropManager.createShareIntentForFiles(context, targetFiles)
+                                if (chooser != null) {
+                                    context.startActivity(chooser)
+                                } else {
+                                    Toast.makeText(context, "Failed to share items", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(percent = 50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("btn_batch_share"),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Share",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // 3. Save (renamed from "Save to Device" to "Save")
+                        Button(
+                            onClick = {
+                                val count = BatchCropManager.saveMultipleFilesToGallery(context, targetFiles)
+                                Toast.makeText(context, "Saved $count screenshots to Gallery", Toast.LENGTH_SHORT).show()
+                                selectedFiles.clear()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            shape = RoundedCornerShape(percent = 50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("btn_batch_save_device"),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Save",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // 4. Delete
+                        IconButton(
+                            onClick = {
+                                val deletedCount = BatchCropManager.deleteBatchFiles(context, targetFiles)
+                                Toast.makeText(context, "Removed $deletedCount item(s)", Toast.LENGTH_SHORT).show()
+                                selectedFiles.clear()
+                                refreshList()
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x33EF4444))
+                                .testTag("btn_batch_delete")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Delete",
+                                tint = Color(0xFFF87171),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Grid of items with individual quick action buttons
+                val rows = items.chunked(2)
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(rows) { rowItems ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            for (item in rowItems) {
+                                val isSelected = selectedFiles.contains(item.file)
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .testTag("saved_card_${item.file.name}"),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                                    border = BorderStroke(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) CyanPrimary else Color(0x33FFFFFF)
+                                    )
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // Image thumbnail with selection toggle & expiration badge
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1.15f)
+                                                .background(Color(0xFF0F172A))
+                                                .clickable { previewFile = item.file }
+                                        ) {
+                                            val bitmap = remember(item.file.lastModified()) {
+                                                try {
+                                                    BitmapFactory.decodeFile(item.file.absolutePath)
+                                                } catch (e: Exception) {
+                                                    null
+                                                }
+                                            }
+
+                                            if (bitmap != null) {
+                                                Image(
+                                                    bitmap = bitmap.asImageBitmap(),
+                                                    contentDescription = "Saved screenshot",
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+
+                                            // Checkbox Overlay Top End
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(6.dp)
+                                                    .clickable {
+                                                        if (isSelected) {
+                                                            selectedFiles.remove(item.file)
+                                                        } else {
+                                                            selectedFiles.add(item.file)
+                                                        }
+                                                    }
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) CyanPrimary else Color(0x99000000))
+                                                        .border(1.dp, if (isSelected) CyanPrimary else Color.White, CircleShape),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (isSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = "Selected",
+                                                            tint = Color(0xFF090D16),
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // Remaining Expiration Time Badge at Bottom
+                                            val remainingHours = TimeUnit.MILLISECONDS.toHours(item.remainingTimeMs)
+                                            val remainingMins = TimeUnit.MILLISECONDS.toMinutes(item.remainingTimeMs) % 60
+                                            val timeLabel = when {
+                                                remainingHours > 0 -> "${remainingHours}h ${remainingMins}m left"
+                                                remainingMins > 0 -> "${remainingMins}m left"
+                                                else -> "Expiring soon"
+                                            }
+
+                                            Surface(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .fillMaxWidth(),
+                                                color = Color(0xD9090D16)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.AccessTime,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFFBBF24),
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = timeLabel,
+                                                        color = Color(0xFFFDE68A),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Individual Quick Actions Bar directly on each card: Share, Save, Delete
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF172033))
+                                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceEvenly
+                                        ) {
+                                            // Quick Share
+                                            IconButton(
+                                                onClick = {
+                                                    val chooser = BatchCropManager.createShareIntentForFiles(context, listOf(item.file))
+                                                    if (chooser != null) {
+                                                        context.startActivity(chooser)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Share,
+                                                    contentDescription = "Share",
+                                                    tint = Color(0xFF38BDF8),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            // Quick Save
+                                            IconButton(
+                                                onClick = {
+                                                    val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(item.file))
+                                                    if (count > 0) {
+                                                        Toast.makeText(context, "Saved to Device Gallery", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Download,
+                                                    contentDescription = "Save",
+                                                    tint = Color(0xFF34D399),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            // Quick Delete
+                                            IconButton(
+                                                onClick = {
+                                                    BatchCropManager.deleteBatchFiles(context, listOf(item.file))
+                                                    refreshList()
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Delete",
+                                                    tint = Color(0xFFF87171),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if (rowItems.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // High resolution preview modal with Share, Save, and Close buttons cleanly separated
+    if (previewFile != null) {
+        SavedImagePreviewDialog(
+            file = previewFile!!,
+            onDismiss = { previewFile = null },
+            onDeleted = {
+                previewFile = null
+                refreshList()
+            }
+        )
+    }
+}
+
+/**
+ * High-resolution preview dialog with distinct, non-overlapping Share, Save, and Close action buttons.
+ */
+@Composable
+fun SavedImagePreviewDialog(
+    file: File,
+    onDismiss: () -> Unit,
+    onDeleted: () -> Unit
+) {
+    val context = LocalContext.current
+    val previewBmp = remember(file) {
+        try {
+            BitmapFactory.decodeFile(file.absolutePath)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            shape = RoundedCornerShape(20.dp),
+            color = Color(0xFF0F172A),
+            border = BorderStroke(1.dp, Color(0x33FFFFFF))
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Top row with title and action buttons cleanly spaced
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Screenshot Preview",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Share Button
+                        IconButton(
+                            onClick = {
+                                val chooser = BatchCropManager.createShareIntentForFiles(context, listOf(file))
+                                if (chooser != null) {
+                                    context.startActivity(chooser)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x330284C7))
+                                .testTag("btn_preview_share")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "Share",
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // 2. Save Button
+                        IconButton(
+                            onClick = {
+                                val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(file))
+                                if (count > 0) {
+                                    Toast.makeText(context, "Saved screenshot to Device Gallery", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x3310B981))
+                                .testTag("btn_preview_save_device")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = "Save",
+                                tint = Color(0xFF34D399),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // 3. Close Button
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x28FFFFFF))
+                                .testTag("btn_preview_close")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (previewBmp != null) {
+                    Image(
+                        bitmap = previewBmp.asImageBitmap(),
+                        contentDescription = "Preview",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(340.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+
+                // Delete action button at the bottom of preview
+                Button(
+                    onClick = {
+                        BatchCropManager.deleteBatchFiles(context, listOf(file))
+                        Toast.makeText(context, "Screenshot deleted", Toast.LENGTH_SHORT).show()
+                        onDeleted()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0x33EF4444)),
+                    shape = RoundedCornerShape(percent = 50),
+                    modifier = Modifier.fillMaxWidth().height(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = null,
+                        tint = Color(0xFFF87171),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Delete Screenshot", color = Color(0xFFF87171), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Inline SavedStorageSection kept for backward compatibility.
+ * Updated to use the single button row with "Save" and no count text.
+ */
 @Composable
 fun SavedStorageSection(
     modifier: Modifier = Modifier,
@@ -101,7 +883,6 @@ fun SavedStorageSection(
 
     fun refreshList() {
         items = BatchCropManager.getTemporaryItems(context)
-        // Clean selection of any removed files
         selectedFiles.retainAll(items.map { it.file })
     }
 
@@ -219,178 +1000,151 @@ fun SavedStorageSection(
                     }
                 }
             } else {
-                // Batch Selection Bar & Actions
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                // Single Button Row without selection count
+                val allSelected = selectedFiles.isNotEmpty() && selectedFiles.size == items.size
+                val targetFiles = if (selectedFiles.isNotEmpty()) selectedFiles.toList() else items.map { it.file }
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B),
+                    border = BorderStroke(1.dp, Color(0x33FFFFFF)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(
-                            text = if (selectedFiles.isEmpty()) "Tap items to select" else "${selectedFiles.size} of ${items.size} selected",
-                            color = if (selectedFiles.isNotEmpty()) Color(0xFF00E5FF) else TextMuted,
-                            fontSize = 13.sp,
-                            fontWeight = if (selectedFiles.isNotEmpty()) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton(
+                        // 1. Select / Deselect All
+                        Surface(
                             onClick = {
-                                if (selectedFiles.size == items.size) {
+                                if (allSelected) {
                                     selectedFiles.clear()
                                 } else {
                                     selectedFiles.clear()
                                     selectedFiles.addAll(items.map { it.file })
                                 }
                             },
-                            modifier = Modifier.testTag("btn_select_all_saved")
+                            shape = RoundedCornerShape(percent = 50),
+                            color = if (allSelected) Color(0x3300E5FF) else Color(0x22FFFFFF),
+                            border = BorderStroke(1.dp, if (allSelected) CyanPrimary else Color(0x33FFFFFF)),
+                            modifier = Modifier.height(36.dp).testTag("btn_select_all_saved")
                         ) {
-                            Text(
-                                text = if (selectedFiles.size == items.size) stringResource(R.string.btn_deselect_all) else stringResource(R.string.btn_select_all),
-                                color = CyanPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (allSelected) Icons.Default.Check else Icons.Default.Collections,
+                                    contentDescription = null,
+                                    tint = if (allSelected) CyanPrimary else Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = if (allSelected) "Deselect" else "Select All",
+                                    color = if (allSelected) CyanPrimary else Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
-                    }
-                }
 
-                // Batch Action Buttons: Share & Save to Device
-                AnimatedVisibility(
-                    visible = selectedFiles.isNotEmpty(),
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0x3300E5FF),
-                        border = BorderStroke(1.dp, Color(0x6600E5FF))
-                    ) {
-                        Row(
+                        // 2. Share
+                        Button(
+                            onClick = {
+                                val chooser = BatchCropManager.createShareIntentForFiles(context, targetFiles)
+                                if (chooser != null) {
+                                    context.startActivity(chooser)
+                                } else {
+                                    Toast.makeText(context, "Failed to share selected items", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(percent = 50),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("btn_batch_share"),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
-                            // 1. Share
-                            Button(
-                                onClick = {
-                                    val chooser = BatchCropManager.createShareIntentForFiles(context, selectedFiles.toList())
-                                    if (chooser != null) {
-                                        context.startActivity(chooser)
-                                    } else {
-                                        Toast.makeText(context, "Failed to share selected items", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                shape = RoundedCornerShape(percent = 50),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(38.dp)
-                                    .testTag("btn_batch_share"),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Share,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = stringResource(R.string.btn_share_selected),
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            // 2. Save
-                            Button(
-                                onClick = {
-                                    val count = BatchCropManager.saveMultipleFilesToGallery(context, selectedFiles.toList())
-                                    Toast.makeText(context, "Saved $count screenshots to Device Gallery", Toast.LENGTH_SHORT).show()
-                                    selectedFiles.clear()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                shape = RoundedCornerShape(percent = 50),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(38.dp)
-                                    .testTag("btn_batch_save_device"),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Download,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(5.dp))
-                                    Text(
-                                        text = stringResource(R.string.crop_btn_save),
-                                        color = Color.White,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            // 3. Batch Delete
-                            IconButton(
-                                onClick = {
-                                    val deletedCount = BatchCropManager.deleteBatchFiles(context, selectedFiles.toList())
-                                    Toast.makeText(context, "Removed $deletedCount item(s)", Toast.LENGTH_SHORT).show()
-                                    selectedFiles.clear()
-                                    refreshList()
-                                },
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x33EF4444))
-                                    .testTag("btn_batch_delete")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Delete",
-                                    tint = Color(0xFFF87171),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            // 4. Close / Deselect Selection
-                            IconButton(
-                                onClick = {
-                                    selectedFiles.clear()
-                                },
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x28FFFFFF))
-                                    .testTag("btn_batch_close_selection")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear selection",
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Share",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
+
+                        // 3. Save (renamed from "Save to Device" to "Save")
+                        Button(
+                            onClick = {
+                                val count = BatchCropManager.saveMultipleFilesToGallery(context, targetFiles)
+                                Toast.makeText(context, "Saved $count screenshots to Gallery", Toast.LENGTH_SHORT).show()
+                                selectedFiles.clear()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            shape = RoundedCornerShape(percent = 50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .testTag("btn_batch_save_device"),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Save",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // 4. Batch Delete
+                        IconButton(
+                            onClick = {
+                                val deletedCount = BatchCropManager.deleteBatchFiles(context, targetFiles)
+                                Toast.makeText(context, "Removed $deletedCount item(s)", Toast.LENGTH_SHORT).show()
+                                selectedFiles.clear()
+                                refreshList()
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x33EF4444))
+                                .testTag("btn_batch_delete")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "Delete",
+                                tint = Color(0xFFF87171),
+                                modifier = Modifier.size(17.dp)
+                            )
                         }
                     }
                 }
@@ -429,7 +1183,6 @@ fun SavedStorageSection(
                                         }
                                         .testTag("saved_item_${item.file.name}")
                                 ) {
-                                    // Image Thumbnail
                                     val bitmap = remember(item.file.lastModified()) {
                                         try {
                                             BitmapFactory.decodeFile(item.file.absolutePath)
@@ -447,7 +1200,6 @@ fun SavedStorageSection(
                                         )
                                     }
 
-                                    // Checkbox Overlay Top End
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.TopEnd)
@@ -479,7 +1231,6 @@ fun SavedStorageSection(
                                         }
                                     }
 
-                                    // Remaining Expiration Time Badge at Bottom
                                     val remainingHours = TimeUnit.MILLISECONDS.toHours(item.remainingTimeMs)
                                     val remainingMins = TimeUnit.MILLISECONDS.toMinutes(item.remainingTimeMs) % 60
                                     val timeLabel = when {
@@ -526,99 +1277,14 @@ fun SavedStorageSection(
         }
     }
 
-    // Fullscreen image preview modal
     if (previewFile != null) {
-        val previewBmp = remember(previewFile) {
-            try {
-                BitmapFactory.decodeFile(previewFile?.absolutePath)
-            } catch (e: Exception) {
-                null
+        SavedImagePreviewDialog(
+            file = previewFile!!,
+            onDismiss = { previewFile = null },
+            onDeleted = {
+                previewFile = null
+                refreshList()
             }
-        }
-
-        Dialog(onDismissRequest = { previewFile = null }) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = Color(0xFF0F172A)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Screenshot Preview",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Save to Device Button
-                            IconButton(
-                                onClick = {
-                                    previewFile?.let { f ->
-                                        val count = BatchCropManager.saveMultipleFilesToGallery(context, listOf(f))
-                                        if (count > 0) {
-                                            Toast.makeText(context, "Saved screenshot to Device Gallery", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x3310B981))
-                                    .testTag("btn_preview_save_device")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Download,
-                                    contentDescription = "Save to Device",
-                                    tint = Color(0xFF10B981),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            // Close Button
-                            IconButton(
-                                onClick = { previewFile = null },
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x28FFFFFF))
-                                    .testTag("btn_preview_close")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (previewBmp != null) {
-                        Image(
-                            bitmap = previewBmp.asImageBitmap(),
-                            contentDescription = "Preview",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(320.dp),
-                            contentScale = ContentScale.Fit
-                        )
-                    }
-                }
-            }
-        }
+        )
     }
 }
