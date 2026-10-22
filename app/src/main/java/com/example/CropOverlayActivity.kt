@@ -1561,6 +1561,9 @@ private fun CropOverlayContent(
                                     val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
                                     if (bmp != null) {
                                         editedCropBitmap = bmp
+                                        // Close selection overlay so there are no bugs with unselected sections
+                                        activeSelectionView?.resetSelection()
+                                        selectionRect = null
                                         showEditDialog = true
                                     } else {
                                         Toast.makeText(context, "Crop area unavailable", Toast.LENGTH_SHORT).show()
@@ -2137,25 +2140,28 @@ private fun CropOverlayContent(
                     bitmap = editedCropBitmap!!,
                     onDismiss = {
                         showEditDialog = false
+                        onCancelRequested()
                     },
                     onCloseDiscard = {
                         showEditDialog = false
+                        onCancelRequested()
                     },
                     onDone = { finalBitmap ->
                         editedCropBitmap = finalBitmap
                         showEditDialog = false
+                        onCancelRequested()
                     },
                     onShare = { finalBitmap ->
                         showEditDialog = false
-                        currentRect?.let { r -> onShareRequested(r, finalBitmap) }
+                        onShareRequested(currentRect ?: RectF(), finalBitmap)
                     },
                     onSaveToDevice = { finalBitmap ->
                         showEditDialog = false
-                        currentRect?.let { r -> onSaveRequested(r, finalBitmap) }
+                        onSaveRequested(currentRect ?: RectF(), finalBitmap)
                     },
                     onSaveToTemporary = { finalBitmap ->
                         showEditDialog = false
-                        currentRect?.let { r -> onSaveToAppStorageRequested(r, finalBitmap) }
+                        onSaveToAppStorageRequested(currentRect ?: RectF(), finalBitmap)
                     }
                 )
             }

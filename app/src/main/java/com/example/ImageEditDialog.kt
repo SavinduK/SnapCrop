@@ -302,17 +302,10 @@ fun ImageEditDialog(
                                 .height(38.dp)
                                 .testTag("btn_edit_done")
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            Box(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Done",
-                                    tint = Color(0xFF090D16),
-                                    modifier = Modifier.size(18.dp)
-                                )
                                 Text(
                                     text = "Done",
                                     color = Color(0xFF090D16),
@@ -973,31 +966,12 @@ fun EditDoneActionDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0x3300E5FF)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                tint = Color(0xFF00E5FF),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Text(
-                            text = stringResource(R.string.editor_popup_title),
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Text(
+                        text = stringResource(R.string.editor_popup_title),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
                     IconButton(
                         onClick = onDismiss,
