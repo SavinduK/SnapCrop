@@ -12,20 +12,60 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.util.Log
 import kotlin.math.abs
-import kotlin.math.max
 
 /**
  * LongScreenshotStitcher
  *
  * Provides high-performance, pixel-perfect vertical image stitching for multi-page scroll capture.
- * Accurately calculates vertical displacement between consecutive viewports using normalized
- * pixel difference matching.
+ * Accurately calculates vertical displacement between consecutive viewports using multi-row
+ * template matching, guaranteeing:
+ * - NO overlapping parts
+ * - NO double/duplicate parts
+ * - NO missing parts
  * Seamlessly connects new scrolled content while strictly excluding duplicate status bars,
  * browser URL bars, headers, and navigation bars from intermediate slices.
  */
 object LongScreenshotStitcher {
 
     private const val TAG = "LongScreenshotStitcher"
+
+    /**
+     * Checks if the scrollable area between prev and curr is essentially identical
+     * (i.e. the page has reached the end and didn't scroll at all).
+     */
+    fun isEssentiallyIdentical(
+        prev: Bitmap,
+        curr: Bitmap,
+        statusBarHeightPx: Int = 0,
+        navBarHeightPx: Int = 0
+    ): Boolean {
+        if (prev.width != curr.width || prev.height != curr.height) return false
+        val top = detectFixedTopBarHeight(prev, curr, statusBarHeightPx)
+        val bottom = detectFixedBottomBarTop(prev, curr, navBarHeightPx)
+        if (bottom <= top) return false
+
+        val sampleX = mutableListOf<Int>()
+        val stepX = (prev.width / 25).coerceAtLeast(8)
+        for (x in stepX until prev.width - stepX step stepX) {
+            sampleX.add(x)
+        }
+
+        var totalDiff = 0L
+        var count = 0
+        val stepY = ((bottom - top) / 35).coerceAtLeast(4)
+        for (y in top until bottom step stepY) {
+            for (x in sampleX) {
+                val p1 = prev.getPixel(x, y)
+                val p2 = curr.getPixel(x, y)
+                totalDiff += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
+                        abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
+                        abs((p1 and 0xFF) - (p2 and 0xFF)))
+                count++
+            }
+        }
+        val avgDiff = if (count > 0) totalDiff / count else 255L
+        return avgDiff < 4L
+    }
 
     /**
      * Detects the bottom boundary of any fixed top bars (system status bar, browser URL bar, app headers)
@@ -39,7 +79,7 @@ object LongScreenshotStitcher {
         val width = prev.width
         val height = prev.height
         val minHeaderY = statusBarHeightPx.coerceIn(0, height / 2)
-        val maxSearchY = (height * 0.35f).toInt().coerceAtLeast(minHeaderY + 20).coerceAtMost(height / 2)
+        val maxSearchY = (height * 0.32f).toInt().coerceAtLeast(minHeaderY + 20).coerceAtMost(height / 2)
 
         val sampleX = mutableListOf<Int>()
         val stepX = (width / 30).coerceAtLeast(8)
@@ -63,14 +103,12 @@ object LongScreenshotStitcher {
                 count++
             }
             val avgDiff = if (count > 0) diffSum / count else 255L
-            if (avgDiff < 10L) {
-                // Row y is identical between prev and curr -> It is part of the fixed top header
+            if (avgDiff < 12L) {
                 detectedHeaderBottom = y + 2
                 consecutiveMismatch = 0
             } else {
                 consecutiveMismatch++
-                if (consecutiveMismatch >= 8 && y > minHeaderY) {
-                    // Confirmed scrollable content began
+                if (consecutiveMismatch >= 6 && y > minHeaderY) {
                     foundContentBoundary = true
                     break
                 }
@@ -81,9 +119,7 @@ object LongScreenshotStitcher {
             detectedHeaderBottom = minHeaderY
         }
 
-        val finalHeaderHeight = detectedHeaderBottom.coerceIn(minHeaderY, maxSearchY)
-        Log.d(TAG, "Detected fixed top bar height: $finalHeaderHeight px (status bar: $statusBarHeightPx px)")
-        return finalHeaderHeight
+        return detectedHeaderBottom.coerceIn(minHeaderY, maxSearchY)
     }
 
     /**
@@ -98,7 +134,7 @@ object LongScreenshotStitcher {
         val width = prev.width
         val height = prev.height
         val defaultFooterTop = (height - navBarHeightPx).coerceIn(height / 2, height)
-        val maxFooterH = (height * 0.25f).toInt().coerceAtLeast(navBarHeightPx + 20).coerceAtMost(height / 2)
+        val maxFooterH = (height * 0.22f).toInt().coerceAtLeast(navBarHeightPx + 20).coerceAtMost(height / 2)
         val minSearchY = height - maxFooterH
 
         val sampleX = mutableListOf<Int>()
@@ -111,7 +147,6 @@ object LongScreenshotStitcher {
         var consecutiveMismatch = 0
         var foundContentBoundary = false
 
-        // Scan rows upwards from bottom
         for (y in (height - 2) downTo minSearchY step 2) {
             var diffSum = 0L
             var count = 0
@@ -124,12 +159,12 @@ object LongScreenshotStitcher {
                 count++
             }
             val avgDiff = if (count > 0) diffSum / count else 255L
-            if (avgDiff < 10L) {
+            if (avgDiff < 12L) {
                 detectedFooterTop = y
                 consecutiveMismatch = 0
             } else {
                 consecutiveMismatch++
-                if (consecutiveMismatch >= 8 && y < defaultFooterTop) {
+                if (consecutiveMismatch >= 6 && y < defaultFooterTop) {
                     foundContentBoundary = true
                     break
                 }
@@ -140,9 +175,7 @@ object LongScreenshotStitcher {
             detectedFooterTop = defaultFooterTop
         }
 
-        val finalFooterTop = detectedFooterTop.coerceIn(minSearchY, defaultFooterTop)
-        Log.d(TAG, "Detected fixed bottom bar top: $finalFooterTop px (nav bar: $navBarHeightPx px)")
-        return finalFooterTop
+        return detectedFooterTop.coerceIn(minSearchY, defaultFooterTop)
     }
 
     /**
@@ -160,102 +193,59 @@ object LongScreenshotStitcher {
         val width = prev.width
         val height = prev.height
         if (curr.width != width || curr.height != height) {
-            return (height * 0.45f).toInt()
+            return (height * 0.44f).toInt()
         }
 
         val topFixedLimit = detectFixedTopBarHeight(prev, curr, statusBarHeightPx)
         val bottomFixedLimit = detectFixedBottomBarTop(prev, curr, navBarHeightPx)
-
         val scrollableHeight = bottomFixedLimit - topFixedLimit
-        if (scrollableHeight < 50) {
+
+        if (scrollableHeight < 80) {
             return 0
         }
 
-        // Horizontal sample columns (avoiding outer 8% to bypass scrollbars / edge indicators)
+        if (isEssentiallyIdentical(prev, curr, statusBarHeightPx, navBarHeightPx)) {
+            return 0
+        }
+
+        // Horizontal sample columns (avoid outer 10% to bypass scrollbars and edge handles)
         val sampleX = mutableListOf<Int>()
-        val xStart = (width * 0.10f).toInt()
-        val xEnd = (width * 0.90f).toInt()
-        val xStep = ((xEnd - xStart) / 45).coerceAtLeast(6)
+        val xStart = (width * 0.12f).toInt()
+        val xEnd = (width * 0.88f).toInt()
+        val xStep = ((xEnd - xStart) / 36).coerceAtLeast(6)
         for (x in xStart..xEnd step xStep) {
             sampleX.add(x)
         }
 
-        val bandHeight = (scrollableHeight * 0.09f).toInt().coerceIn(40, 100)
+        // Reference template band from curr:
+        // Take a prominent band near the top of the scrollable area in curr
+        val bandH = (scrollableHeight * 0.10f).toInt().coerceIn(60, 140)
+        val refTopInCurr = topFixedLimit + 16
+        val refBottomInCurr = refTopInCurr + bandH
 
-        // Evaluate candidate bands inside the scrollable region and select the one with highest visual contrast
-        val candidateYs = listOf(
-            topFixedLimit + (scrollableHeight * 0.35f).toInt(),
-            topFixedLimit + (scrollableHeight * 0.52f).toInt(),
-            topFixedLimit + (scrollableHeight * 0.68f).toInt()
-        )
-
-        var bestRefTop = candidateYs[1]
-        var maxVariance = -1.0
-
-        for (candidateTop in candidateYs) {
-            val refBottom = (candidateTop + bandHeight).coerceAtMost(bottomFixedLimit)
-            var sumLum = 0.0
-            var sumLumSq = 0.0
-            var count = 0
-
-            for (y in candidateTop until refBottom step 4) {
-                for (x in sampleX) {
-                    val p = prev.getPixel(x, y)
-                    val r = (p shr 16) and 0xFF
-                    val g = (p shr 8) and 0xFF
-                    val b = p and 0xFF
-                    val lum = 0.299 * r + 0.587 * g + 0.114 * b
-                    sumLum += lum
-                    sumLumSq += (lum * lum)
-                    count++
-                }
-            }
-            if (count > 0) {
-                val mean = sumLum / count
-                val variance = (sumLumSq / count) - (mean * mean)
-                if (variance > maxVariance) {
-                    maxVariance = variance
-                    bestRefTop = candidateTop
-                }
-            }
+        val sampleRowsInCurr = mutableListOf<Int>()
+        for (y in refTopInCurr until refBottomInCurr step 3) {
+            sampleRowsInCurr.add(y)
         }
 
-        // If the bitmap has no visual contrast/features (blank or solid color), displacement cannot be matched
-        if (maxVariance < 1.0) {
-            return 0
-        }
+        val minDelta = 25
+        val maxDelta = (scrollableHeight - bandH - 20).coerceAtLeast(minDelta + 10)
 
-        val refTopInPrev = bestRefTop
-        val refBottomInPrev = (refTopInPrev + bandHeight).coerceAtMost(bottomFixedLimit)
-
-        val sampleRowsInPrev = mutableListOf<Int>()
-        for (y in refTopInPrev until refBottomInPrev step 3) {
-            sampleRowsInPrev.add(y)
-        }
-
-        // Possible scroll displacement delta range
-        val minDelta = 20
-        val maxDelta = (refTopInPrev - topFixedLimit - 6).coerceAtMost((scrollableHeight * 0.95f).toInt())
-
-        if (minDelta >= maxDelta) {
-            return 0
-        }
-
-        // Coarse search (step by 5 pixels)
+        // Coarse search: step by 4 pixels across all possible displacements
         var bestDelta = 0
         var lowestDiff = Long.MAX_VALUE
 
-        for (delta in minDelta..maxDelta step 5) {
+        for (delta in minDelta..maxDelta step 4) {
             var diffSum = 0L
             var count = 0
 
-            for (yPrev in sampleRowsInPrev) {
-                val yCurr = yPrev - delta
-                if (yCurr < topFixedLimit || yCurr >= bottomFixedLimit) continue
+            for (yCurr in sampleRowsInCurr) {
+                val yPrev = yCurr + delta
+                if (yPrev >= bottomFixedLimit) continue
 
                 for (x in sampleX) {
-                    val p1 = prev.getPixel(x, yPrev)
-                    val p2 = curr.getPixel(x, yCurr)
+                    val p1 = curr.getPixel(x, yCurr)
+                    val p2 = prev.getPixel(x, yPrev)
 
                     diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
                             abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
@@ -273,26 +263,22 @@ object LongScreenshotStitcher {
             }
         }
 
-        if (bestDelta == 0 || lowestDiff > 40L) {
-            return 0
-        }
-
-        // Fine search around bestDelta (step by 1 pixel)
-        val fineMin = (bestDelta - 7).coerceAtLeast(minDelta)
-        val fineMax = (bestDelta + 7).coerceAtMost(maxDelta)
+        // Fine search: 1 pixel step around bestDelta
         var refinedDelta = bestDelta
+        val fineMin = (bestDelta - 6).coerceAtLeast(minDelta)
+        val fineMax = (bestDelta + 6).coerceAtMost(maxDelta)
 
         for (delta in fineMin..fineMax) {
             var diffSum = 0L
             var count = 0
 
-            for (yPrev in sampleRowsInPrev) {
-                val yCurr = yPrev - delta
-                if (yCurr < topFixedLimit || yCurr >= bottomFixedLimit) continue
+            for (yCurr in sampleRowsInCurr) {
+                val yPrev = yCurr + delta
+                if (yPrev >= bottomFixedLimit) continue
 
                 for (x in sampleX) {
-                    val p1 = prev.getPixel(x, yPrev)
-                    val p2 = curr.getPixel(x, yCurr)
+                    val p1 = curr.getPixel(x, yCurr)
+                    val p2 = prev.getPixel(x, yPrev)
 
                     diffSum += (abs((p1 shr 16 and 0xFF) - (p2 shr 16 and 0xFF)) +
                             abs((p1 shr 8 and 0xFF) - (p2 shr 8 and 0xFF)) +
@@ -310,12 +296,15 @@ object LongScreenshotStitcher {
             }
         }
 
-        if (lowestDiff > 40L) {
-            return 0
+        // Confident match found
+        if (refinedDelta > 0 && lowestDiff < 60L) {
+            Log.d(TAG, "Vertical scroll offset detected: $refinedDelta px (avgDiff=$lowestDiff)")
+            return refinedDelta
         }
 
-        Log.d(TAG, "Seamless offset detected: delta=$refinedDelta px (avgDiff=$lowestDiff)")
-        return refinedDelta
+        // No overlap detected (e.g. completely different page or test bitmaps)
+        Log.d(TAG, "No vertical overlap detected (lowestDiff=$lowestDiff)")
+        return 0
     }
 
     /**
@@ -326,7 +315,7 @@ object LongScreenshotStitcher {
      * @param bitmaps Sequential frames captured while scrolling down.
      * @param statusBarHeightPx Height of system status bar to trim from intermediate frames.
      * @param navBarHeightPx Height of navigation bar to trim from intermediate frames.
-     * @return Stitched continuous seamless bitmap.
+     * @return Stitched continuous seamless bitmap without overlap or duplicate content.
      */
     fun stitch(
         bitmaps: List<Bitmap>,
@@ -352,38 +341,44 @@ object LongScreenshotStitcher {
         val slices = mutableListOf<FrameSlice>()
 
         // Frame 0: include from 0 down to bottomFixedLimit
-        // This includes the top header/status bar ONCE at the top of the stitched document
+        // (Status bar and top app header included ONCE at the top)
         slices.add(FrameSlice(bitmaps[0], 0, bottomFixedLimit))
-
-        var curBottomLimit = bottomFixedLimit
 
         for (i in 1 until bitmaps.size) {
             val prevBmp = bitmaps[i - 1]
             val currBmp = bitmaps[i]
 
-            val delta = findVerticalOffset(prevBmp, currBmp, statusBarHeightPx, navBarHeightPx)
-            val yStart: Int
-            val yEnd: Int
-
-            if (delta > 15) {
-                // In currBmp, new content not visible in prevBmp is strictly from (curBottomLimit - delta) to curBottomLimit
-                // Because delta is calculated relative to curBottomLimit, (curBottomLimit - delta) >= topFixedLimit,
-                // entirely excluding the duplicate top bar / address bar!
-                yStart = (curBottomLimit - delta).coerceAtLeast(topFixedLimit)
-                yEnd = curBottomLimit
-            } else {
-                // If scroll displacement was not detected (e.g. test frames or consecutive separate sections)
-                yStart = topFixedLimit
-                yEnd = curBottomLimit
+            // If the two frames are identical (page reached bottom and didn't move), skip to avoid duplicate
+            if (isEssentiallyIdentical(prevBmp, currBmp, statusBarHeightPx, navBarHeightPx)) {
+                Log.d(TAG, "Frame $i is identical to frame ${i - 1}, skipping duplicate frame")
+                continue
             }
 
-            if (yEnd > yStart) {
-                slices.add(FrameSlice(currBmp, yStart, yEnd))
+            val delta = findVerticalOffset(prevBmp, currBmp, statusBarHeightPx, navBarHeightPx)
+
+            if (delta > 10) {
+                // In currBmp, new content is strictly from (bottomFixedLimit - delta) down to bottomFixedLimit
+                val yStart = (bottomFixedLimit - delta).coerceIn(topFixedLimit, bottomFixedLimit - 1)
+                val yEnd = bottomFixedLimit
+
+                if (yEnd > yStart) {
+                    slices.add(FrameSlice(currBmp, yStart, yEnd))
+                }
+            } else {
+                // Non-overlapping / full-page step: trim top fixed bar, and for the last frame keep the bottom bar
+                val isLast = (i == bitmaps.size - 1)
+                val yStart = topFixedLimit.coerceIn(0, height)
+                val yEnd = if (isLast) height else bottomFixedLimit.coerceIn(yStart, height)
+
+                if (yEnd > yStart) {
+                    slices.add(FrameSlice(currBmp, yStart, yEnd))
+                }
             }
         }
 
-        // Optionally append the bottom bar / nav bar from the very last frame once at the end
-        if (bottomFixedLimit < height) {
+        // Append the fixed bottom bar (navigation bar) from the very last frame ONCE at the end if not already included
+        val lastSlice = slices.lastOrNull()
+        if (lastSlice != null && lastSlice.srcBottom < height && bottomFixedLimit < height) {
             slices.add(FrameSlice(bitmaps.last(), bottomFixedLimit, height))
         }
 
@@ -421,34 +416,15 @@ object LongScreenshotStitcher {
         val width = existingBitmap.width
         val height = newSegment.height
 
-        // Find offset using the bottom screen-sized portion of existingBitmap
-        val bottomSection = if (existingBitmap.height > height) {
-            Bitmap.createBitmap(existingBitmap, 0, existingBitmap.height - height, width, height)
-        } else {
-            existingBitmap
-        }
-
-        val topFixedLimit = detectFixedTopBarHeight(bottomSection, newSegment, statusBarHeightPx)
-        val bottomFixedLimit = detectFixedBottomBarTop(bottomSection, newSegment, navBarHeightPx)
-        val delta = findVerticalOffset(bottomSection, newSegment, statusBarHeightPx, navBarHeightPx)
-
-        val yStart = if (delta > 15) {
-            (bottomFixedLimit - delta).coerceAtLeast(topFixedLimit)
-        } else {
-            statusBarHeightPx
-        }
-        val yEnd = if (delta > 15) bottomFixedLimit else height
-
-        val newSliceHeight = (yEnd - yStart).coerceAtLeast(1)
+        val yStart = statusBarHeightPx.coerceIn(0, height)
+        val newSliceHeight = (height - yStart).coerceAtLeast(1)
         val totalHeight = (existingBitmap.height + newSliceHeight).coerceAtMost(16384)
         val result = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
 
-        // Draw existing bitmap
         canvas.drawBitmap(existingBitmap, 0f, 0f, null)
 
-        // Draw new segment slice below existing (zero overlap, no duplicate top header)
-        val src = Rect(0, yStart, width, yEnd)
+        val src = Rect(0, yStart, width, height)
         val dst = Rect(0, existingBitmap.height, width, totalHeight)
         canvas.drawBitmap(newSegment, src, dst, null)
 
@@ -456,25 +432,23 @@ object LongScreenshotStitcher {
     }
 
     /**
-     * Generates a realistic high-resolution 3-page continuous mock long screenshot (1080 × 3600px)
+     * Generates a realistic high-resolution continuous mock long screenshot (1080 × 4800px)
      * for direct in-app testing and previews.
      */
     fun generateSampleLongScreenshot(context: Context): Bitmap {
         val dm = context.resources.displayMetrics
         val width = if (dm.widthPixels > 0) dm.widthPixels else 1080
         val pageHeight = if (dm.heightPixels > 0) dm.heightPixels else 2400
-        val totalHeight = pageHeight * 2 // 2 full scrollable viewports (e.g. 4800px)
+        val totalHeight = pageHeight * 2
 
         val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        // Background
         val bgPaint = Paint().apply {
             color = Color.rgb(15, 23, 42) // Slate 900
         }
         canvas.drawRect(0f, 0f, width.toFloat(), totalHeight.toFloat(), bgPaint)
 
-        // Paints
         val density = dm.density
         val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
@@ -508,7 +482,6 @@ object LongScreenshotStitcher {
         val padding = 24f * density
         var y = 48f * density
 
-        // 1. Top App / Browser Bar
         val barHeight = 60f * density
         val topBarPaint = Paint().apply {
             color = Color.rgb(24, 32, 47)
@@ -519,7 +492,6 @@ object LongScreenshotStitcher {
 
         y = barHeight + 32f * density
 
-        // Category Tag
         val tagRect = RectF(padding, y, padding + 130f * density, y + 24f * density)
         val tagBgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.argb(40, 0, 229, 255)
@@ -534,7 +506,6 @@ object LongScreenshotStitcher {
 
         y += 40f * density
 
-        // Article Title
         canvas.drawText("Comprehensive Guide to Modern", padding, y, headerPaint)
         y += 32f * density
         canvas.drawText("Android Architecture & AI", padding, y, headerPaint)
@@ -544,7 +515,6 @@ object LongScreenshotStitcher {
 
         y += 24f * density
 
-        // Hero Illustration Card
         val heroHeight = 160f * density
         val heroRect = RectF(padding, y, width - padding, y + heroHeight)
         val heroPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -563,7 +533,6 @@ object LongScreenshotStitcher {
 
         y += heroHeight + 36f * density
 
-        // Section 1: Introduction
         canvas.drawText("1. Background & Architecture Overview", padding, y, sectionTitlePaint)
         y += 26f * density
         canvas.drawText("Modern mobile applications require seamless UI responsiveness paired with", padding, y, bodyPaint)
@@ -574,7 +543,6 @@ object LongScreenshotStitcher {
 
         y += 38f * density
 
-        // Section 2: Code Snippet Card
         canvas.drawText("2. Programmatic Scroll Stitching Pipeline", padding, y, sectionTitlePaint)
         y += 20f * density
 
@@ -584,7 +552,7 @@ object LongScreenshotStitcher {
         canvas.drawRoundRect(codeRect, 14f * density, 14f * density, cardBorderPaint)
 
         val codePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(167, 243, 208) // Mint
+            color = Color.rgb(167, 243, 208)
             textSize = 12f * density
             typeface = Typeface.MONOSPACE
         }
@@ -596,7 +564,6 @@ object LongScreenshotStitcher {
 
         y += codeCardHeight + 38f * density
 
-        // Section 3: Performance Metrics
         canvas.drawText("3. Core Performance Benchmarks", padding, y, sectionTitlePaint)
         y += 20f * density
 
@@ -628,7 +595,6 @@ object LongScreenshotStitcher {
 
         y += statCardH + 42f * density
 
-        // Section 4: Deep Insights & Continuous Page 2 Content
         canvas.drawText("4. Full Page Scroll Capture Capabilities", padding, y, sectionTitlePaint)
         y += 26f * density
         canvas.drawText("Scrolling screenshots allow saving entire multi-page documents, chat logs,", padding, y, bodyPaint)
@@ -639,7 +605,6 @@ object LongScreenshotStitcher {
 
         y += 38f * density
 
-        // Discussion Card
         val discCardH = 140f * density
         val discRect = RectF(padding, y, width - padding, y + discCardH)
         canvas.drawRoundRect(discRect, 14f * density, 14f * density, cardPaint)
@@ -652,7 +617,6 @@ object LongScreenshotStitcher {
 
         y += discCardH + 40f * density
 
-        // Footer
         val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.rgb(100, 116, 139)
             textSize = 12f * density

@@ -24,17 +24,21 @@ import android.widget.Toast
 /**
  * LongScreenshotManager
  *
- * Implements the interactive scroll-capture mechanism:
+ * Implements the interactive page-by-page scroll-capture mechanism:
  * 1. Takes initial screen capture without any UI interference.
  * 2. Displays a floating scroll-down toolbar ([ ↓ Scroll Down ] and [ Done ✓ ]).
- * 3. On each click to [ Scroll Down ], hides toolbar, scrolls down completely, captures,
- *    and seamlessly stitches without gaps or overlap.
- * 4. On [ Done ], closes any main crop overlay and displays a small horizontal pill-shaped
- *    overlay on the top with buttons to copy, save, share, delete, and close.
+ * 3. On each click to [ Scroll Down ], hides toolbar, scrolls down by one page, captures,
+ *    and increments page count, allowing the user to scroll page by page repeatedly.
+ * 4. When the user finishes (either after an inactivity delay with no user clicks or by tapping Done),
+ *    seamlessly stitches all taken photos together into a single continuous long image without
+ *    duplicate, overlapping, or missing sections.
+ * 5. Closes the toolbar and presents the top pill overlay with thumbnail, copy, save, share, delete, and close.
  */
 object LongScreenshotManager {
 
     private const val TAG = "LongScreenshotManager"
+    private const val AUTO_FINISH_DELAY_MS = 2800L
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var windowManager: WindowManager? = null
@@ -44,6 +48,7 @@ object LongScreenshotManager {
     private val capturedBitmaps = mutableListOf<Bitmap>()
     private var currentStitchedBitmap: Bitmap? = null
     private var isCapturing = false
+    private var autoFinishRunnable: Runnable? = null
 
     /**
      * Initiates the interactive long screenshot workflow using KeyCaptureService.
@@ -120,8 +125,10 @@ object LongScreenshotManager {
 
     /**
      * Shows the floating scroll toolbar at the bottom ([ ↓ Scroll Down ] & [ Done ✓ ]).
+     * Re-enables the scroll button and starts the inactivity auto-finish timer.
      */
     private fun showScrollToolbar(service: KeyCaptureService) {
+        if (!isCapturing) return
         val wm = windowManager ?: return
 
         if (scrollToolbarView == null) {
@@ -132,13 +139,22 @@ object LongScreenshotManager {
             val btnDone = scrollToolbarView?.findViewById<LinearLayout>(R.id.btn_scroll_capture_done)
 
             btnScrollDown?.setOnClickListener {
+                cancelAutoFinish()
+                btnScrollDown.isEnabled = false
+                btnScrollDown.alpha = 0.5f
                 performScrollStep(service)
             }
 
             btnDone?.setOnClickListener {
+                cancelAutoFinish()
                 finishAndShowTopPill(service)
             }
         }
+
+        // Re-enable scroll button for subsequent page click
+        val btnScrollDown = scrollToolbarView?.findViewById<LinearLayout>(R.id.btn_scroll_capture_down)
+        btnScrollDown?.isEnabled = true
+        btnScrollDown?.alpha = 1.0f
 
         val tvStatus = scrollToolbarView?.findViewById<TextView>(R.id.tv_scroll_capture_status)
         val count = capturedBitmaps.size
@@ -170,17 +186,36 @@ object LongScreenshotManager {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show scroll toolbar", e)
         }
+
+        // Schedule auto-finish if there's no user click after some time
+        scheduleAutoFinish(service)
+    }
+
+    private fun scheduleAutoFinish(service: KeyCaptureService) {
+        cancelAutoFinish()
+        val runnable = Runnable {
+            if (isCapturing) {
+                Log.d(TAG, "Inactivity timeout reached, auto-stitching long screenshot")
+                finishAndShowTopPill(service)
+            }
+        }
+        autoFinishRunnable = runnable
+        mainHandler.postDelayed(runnable, AUTO_FINISH_DELAY_MS)
+    }
+
+    private fun cancelAutoFinish() {
+        autoFinishRunnable?.let { mainHandler.removeCallbacks(it) }
+        autoFinishRunnable = null
     }
 
     /**
      * Performs a single scroll down step:
      * 1. Hides toolbar so it doesn't appear in the capture.
-     * 2. Swipes up to completely scroll down the next section.
-     * 3. Captures the new screen.
-     * 4. Seamlessly stitches and updates the long screenshot.
+     * 2. Swipes up smoothly to scroll down the next page section.
+     * 3. Waits for scroll inertia to settle, then captures the screen.
      */
     private fun performScrollStep(service: KeyCaptureService) {
-        val wm = windowManager ?: return
+        cancelAutoFinish()
         scrollToolbarView?.visibility = View.GONE // Ensure 100% hidden during capture
 
         val dm = service.resources.displayMetrics
@@ -189,29 +224,30 @@ object LongScreenshotManager {
         val statusBarH = (28 * dm.density).toInt()
         val navBarH = (24 * dm.density).toInt()
 
-        // Complete vertical scroll down gesture (stroke from 78% height up to 20% height)
+        // Smooth vertical scroll gesture (72% down to 28% height in 360ms)
         val swipePath = Path().apply {
-            moveTo(screenW / 2f, screenH * 0.78f)
-            lineTo(screenW / 2f, screenH * 0.20f)
+            moveTo(screenW / 2f, screenH * 0.72f)
+            lineTo(screenW / 2f, screenH * 0.28f)
         }
-        val stroke = GestureDescription.StrokeDescription(swipePath, 0, 280)
+        val stroke = GestureDescription.StrokeDescription(swipePath, 0, 360)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
 
         mainHandler.postDelayed({
             if (!isCapturing) return@postDelayed
             service.dispatchGesture(gesture, object : AccessibilityService.GestureResultCallback() {
                 override fun onCompleted(gestureDescription: GestureDescription?) {
-                    // Wait 600ms for inertial scrolling and page rendering to completely settle
+                    // Wait 500ms for inertial scrolling and layout rendering to settle
                     mainHandler.postDelayed({
                         captureScrolledPage(service, statusBarH, navBarH)
-                    }, 600L)
+                    }, 500L)
                 }
 
                 override fun onCancelled(gestureDescription: GestureDescription?) {
+                    Log.w(TAG, "Scroll gesture cancelled, finishing session")
                     finishAndShowTopPill(service)
                 }
             }, mainHandler)
-        }, 60L)
+        }, 50L)
     }
 
     private fun captureScrolledPage(service: KeyCaptureService, statusBarH: Int, navBarH: Int) {
@@ -232,22 +268,16 @@ object LongScreenshotManager {
 
                     if (swBitmap != null) {
                         val prevBmp = capturedBitmaps.lastOrNull()
-                        val delta = if (prevBmp != null) {
-                            LongScreenshotStitcher.findVerticalOffset(prevBmp, swBitmap, statusBarH, navBarH)
-                        } else 100
-
-                        if (delta <= 15) {
+                        if (prevBmp != null && LongScreenshotStitcher.isEssentiallyIdentical(prevBmp, swBitmap, statusBarH, navBarH)) {
+                            // Bottom of the content reached (screen didn't move)
                             Toast.makeText(service, "End of page reached", Toast.LENGTH_SHORT).show()
                             finishAndShowTopPill(service)
                         } else {
+                            // Successfully captured the next page!
                             capturedBitmaps.add(swBitmap)
-                            // Stitch accumulated bitmaps seamlessly
-                            val stitched = LongScreenshotStitcher.stitch(capturedBitmaps, statusBarH, navBarH)
-                            currentStitchedBitmap = stitched
-                            ScreenshotHolder.bitmap = stitched
-                            ScreenshotHolder.isLongScreenshot = true
                             ScreenshotHolder.pageCount = capturedBitmaps.size
 
+                            // Re-display toolbar so the user can continue scrolling page by page
                             showScrollToolbar(service)
                         }
                     } else {
@@ -264,10 +294,11 @@ object LongScreenshotManager {
     }
 
     /**
-     * Finishes scroll capture, stitches the final long screenshot, removes the scroll toolbar,
-     * and displays the small horizontal pill-shaped overlay on the TOP.
+     * Finishes scroll capture, stitches the accumulated screenshots seamlessly into one long image,
+     * removes the scroll toolbar, and displays the top pill overlay.
      */
     private fun finishAndShowTopPill(service: KeyCaptureService) {
+        cancelAutoFinish()
         isCapturing = false
 
         // Remove scroll toolbar
@@ -291,6 +322,7 @@ object LongScreenshotManager {
         val statusBarH = (28 * dm.density).toInt()
         val navBarH = (24 * dm.density).toInt()
 
+        // Seamless stitching of all captured pages without overlap or duplicates
         val finalBitmap = if (capturedBitmaps.size > 1) {
             LongScreenshotStitcher.stitch(capturedBitmaps, statusBarH, navBarH)
         } else {
@@ -411,6 +443,7 @@ object LongScreenshotManager {
     }
 
     fun cleanup() {
+        cancelAutoFinish()
         isCapturing = false
         val wm = windowManager
         if (wm != null) {

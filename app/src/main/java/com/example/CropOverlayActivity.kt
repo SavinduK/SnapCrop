@@ -1181,6 +1181,20 @@ private fun CropOverlayContent(
     var simulationStitchedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showTopPillOnly by remember { mutableStateOf(false) }
 
+    // Auto-finish long screenshot after user finishes clicking (inactivity timeout)
+    LaunchedEffect(isSimulatingScrollCapture, simulationPages, showTopPillOnly, showEditDialog) {
+        if (isSimulatingScrollCapture && !showEditDialog && !showTopPillOnly) {
+            kotlinx.coroutines.delay(2800L)
+            isSimulatingScrollCapture = false
+            showTopPillOnly = true
+            val finalBmp = simulationStitchedBitmap ?: LongScreenshotStitcher.generateSampleLongScreenshot(context)
+            simulationStitchedBitmap = finalBmp
+            ScreenshotHolder.bitmap = finalBmp
+            ScreenshotHolder.isLongScreenshot = true
+            ScreenshotHolder.pageCount = simulationPages
+        }
+    }
+
     // Circle to Search OCR State
     var isOcrProcessing by remember { mutableStateOf(false) }
     var isOcrActive by remember { mutableStateOf(false) }
