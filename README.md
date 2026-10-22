@@ -1,39 +1,194 @@
-An open-source, background system utility for Android that lets you silently capture, crop, adjust, and share any section of your screen. Inspired by Samsung’s Galaxy AI Select, this lightweight tool replaces invasive full-screen touch gestures with a subtle side trigger bar and volume hardware shortcuts.
-Features
- * Left Side Trigger Bar: A translucent, low-profile sidebar docked on the left screen edge. Swipe inward from any app to trigger an instant selection overlay.
- * Volume Key Shortcut: Press and hold Volume Down for 700ms to launch screen selection without touching the screen.
- * Interactive Crop Box: Drag to create a selection box, fine-tune using corner and edge resize handles, or drag inside the box to reposition it.
- * Reselect & Reset: Tap outside the box to clear your selection and start drawing a new one instantly.
- * Direct Share Sheet Integration: Tap the floating Share button beneath your selection to crop the bitmap and launch the native Android Share sheet (ACTION_SEND).
- * Zero Input Blocking: Unlike full-screen gesture overlays, the side bar uses precise window bounds so 100% of your screen interactions, typing, and gaming remain unaffected.
- * 100% On-Device & Private: Screen captures are processed entirely on-device with zero network calls or data tracking.
-Technical Highlights
- * Silent Screen Capture: Utilizes Android 11+ (API 30+) AccessibilityService.takeScreenshot() to capture display contents without repetitive MediaProjection runtime prompts.
- * Minimal Touch Footprint: Uses WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY pinned tightly to the left edge of the screen, ensuring underlying apps receive uninterrupted touch inputs.
- * Hardware Key Interception: Implements onKeyEvent() filtering in AccessibilityService to handle long-press detection on KEYCODE_VOLUME_DOWN.
- * Dynamic Bitmaps & File Sharing: Processes raw hardware buffers, renders selection overlays, and exposes cropped PNGs safely via FileProvider (content:// URIs).
-Architecture Overview
-├── app/src/main/
-    ├── java/com/example/screenselect/
-    │   ├── KeyCaptureService.kt      # Core Accessibility Service & Volume listener
-    │   ├── SidebarOverlayManager.kt  # Left side trigger bar overlay logic
-    │   ├── CropOverlayActivity.kt    # Interactive crop, resize & share UI
-    │   └── MainActivity.kt           # Permissions onboarding screen
-    └── res/
-        └── xml/
-            ├── accessibility_service_config.xml
-            └── file_paths.xml
+# ✂️ SnapCrop
 
-Requirements
- * Android Version: Android 11 (API level 30) or higher.
- * Permissions Required:
-   * Accessibility Service: Enables silent screenshot capture and hardware key monitoring.
-   * Display Over Other Apps (SYSTEM_ALERT_WINDOW): Allows rendering the side trigger bar and translucent crop layer.
-   * Battery Optimization Exemption: Keeps the service alive in the background.
-Setup & Usage
- * Download the latest APK from the Releases tab or build the project directly in Android Studio.
- * Launch the app and tap Enable Accessibility Service.
- * Grant Display over other apps and exclude the app from Battery Optimization.
- * Swipe inward from the left edge trigger bar (or hold Volume Down) on any screen to capture, crop, and share!
-License
-Distributed under the MIT License. See LICENSE for more information.
+**Instant Screen Capture & AI for Android**
+
+SnapCrop lets you capture any part of your screen in one tap, crop it, copy the text, take long scrolling screenshots, and send the image to your favourite AI app (Gemini, Google Search/Lens, ChatGPT, or Claude).
+
+---
+
+## 📑 Table of Contents
+
+- [✨ Features](#-features)
+- [📱 Requirements](#-requirements)
+- [📥 Installation](#-installation)
+- [♿ Enable the Accessibility Service](#-enable-the-accessibility-service)
+- [🔐 Other Permissions](#-other-permissions)
+- [🚀 How to Use](#-how-to-use)
+- [🤖 Choosing an AI Model](#-choosing-an-ai-model)
+- [🛠️ Troubleshooting](#️-troubleshooting)
+- [🔒 Privacy](#-privacy)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+
+---
+
+## ✨ Features
+
+| Feature | What it does |
+|---|---|
+| 📏 **Edge Panel** | A small bar on the edge of your screen. Tap or swipe it to start a capture. |
+| ⚡ **3x Power Button Tap** | Press the power button 3 times to capture instantly. |
+| 📜 **Long Screenshot** | Scroll and stitch full web pages, long chats, or documents into one image. |
+| 🔤 **Select Text (OCR)** | Recognise text from your selection, copy it, or search it on Google. |
+| ✨ **Ask AI** | Explain, summarise, translate, or solve anything you crop with one tap. |
+| 📤 **Quick Share** | Send the cropped image to any app with an instant preview. |
+| 📋 **Copy & Save** | Copy to clipboard or save to your photo gallery. |
+| 🗑️ **Saved Clips** | Recent clips are kept for 24 hours, then deleted automatically. |
+
+---
+
+## 📱 Requirements
+
+- 📲 Android phone
+- 🔓 Permission to install apps from outside the Play Store (if you install the APK)
+- ♿ Accessibility Service access (explained below)
+
+---
+
+## 📥 Installation
+
+### Option 1: Install the APK (easiest) 📦
+
+1. Go to the [**Releases**](../../releases) page of this repository.
+2. Download the latest `SnapCrop.apk`.
+3. Open the file on your phone.
+4. If asked, allow **"Install from this source"** for your browser or file manager.
+5. Tap **Install**, then **Open**.
+
+### Option 2: Build it yourself 🧑‍💻
+
+```bash
+# 1. Clone the project
+git clone https://github.com/<your-username>/SnapCrop.git
+
+# 2. Go into the folder
+cd SnapCrop
+
+# 3. Build and install on a connected phone (Android Studio / Gradle)
+./gradlew installDebug
+```
+
+> 💡 Replace `<your-username>` with the real GitHub username. If the project uses a different build tool, follow its usual build steps instead.
+
+---
+
+## ♿ Enable the Accessibility Service
+
+SnapCrop needs the **Accessibility Service** so that the edge bar, the 3x power button trigger, and long screenshots (auto-scrolling) can work. Without it, these features will not run.
+
+### Steps 👣
+
+1. Open the **SnapCrop** app.
+2. Tap the permission prompt (or open your phone's **Settings** manually).
+3. Go to **Settings → Accessibility**.
+4. Find **SnapCrop**:
+   - It may be under **Installed apps**, **Downloaded apps**, or **Installed services**.
+5. Tap **SnapCrop** and switch it **ON** 🟢.
+6. Confirm by tapping **Allow** / **OK** on the warning pop-up.
+7. Return to SnapCrop. The status at the top should show **Ready** ✅.
+
+### ⚠️ If the switch is greyed out ("Restricted setting")
+
+On Android 13 and newer, apps installed from an APK may be blocked from using Accessibility at first. To fix this:
+
+1. Long-press the SnapCrop icon → **App info** (ⓘ).
+2. Tap the **⋮** menu (top right).
+3. Tap **Allow restricted settings**.
+4. Go back to **Settings → Accessibility** and turn SnapCrop on.
+
+### Why does SnapCrop need this? 🤔
+
+- 👆 To detect the edge panel taps and the power button triple-press.
+- 📜 To scroll the screen automatically for long screenshots.
+
+SnapCrop does **not** use it to read your passwords or personal messages.
+
+---
+
+## 🔐 Other Permissions
+
+| Permission | Why it's needed |
+|---|---|
+| 🎥 **Screen Capture** | Lets the floating edge bar take screenshots. |
+| 🪟 **Display over other apps** | Shows the edge bar and crop tools on top of other apps. |
+| 🔋 **Keep Active in Background** | Stops Android from closing SnapCrop when the phone sleeps. Tap **Enable** on the main screen. |
+
+> 💡 On Xiaomi, Oppo, Vivo, and similar phones, also turn on **Autostart** and set battery usage to **No restrictions** for SnapCrop.
+
+---
+
+## 🚀 How to Use
+
+1. **Open SnapCrop** and make sure it says **Ready** ✅.
+2. **Pick a trigger** 👇
+   - 🔹 **Edge Panel**: tap or swipe the thin bar on the edge of your screen.
+   - 🔹 **3 Times Tap Power Button**: press the power button 3 times quickly.
+3. **Drag to crop** the area you want.
+4. **Choose an action** from the crop dock:
+   - 📜 Long screenshot
+   - 🔤 Select text (OCR)
+   - ✨ Ask AI
+   - 📤 Share
+   - 📋 Copy or 💾 Save
+
+### 📜 Taking a Long Screenshot
+
+1. Turn on **Long Screenshot** in the **Crop Modes & Actions** section.
+2. Open the page, chat, or article you want to capture.
+3. Trigger SnapCrop and tap the long screenshot option.
+4. Wait while it scrolls and stitches everything together. You will see *"Starting long screenshot..."*.
+
+---
+
+## 🤖 Choosing an AI Model
+
+Under **AI Model to Share**, pick where your cropped image is sent:
+
+- 🌟 **Google Gemini** (default)
+- 🔍 **Google Search** (Lens)
+- 💬 **ChatGPT**
+- 🧡 **Claude**
+
+> ℹ️ The AI app must be installed on your phone. Apps that are installed show an **Installed** tag.
+
+---
+
+## 🛠️ Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| Edge bar does not appear | Check Accessibility is ON and "Display over other apps" is allowed. |
+| Power button trigger does not work | Make sure the Accessibility Service is enabled and the trigger is selected. |
+| Long screenshot fails | Turn on **Long Screenshot** in settings and keep the screen unlocked while it scrolls. |
+| App stops after a while | Tap **Enable** under **Keep Active in Background** and disable battery optimisation. |
+| Accessibility switch is greyed out | Use **Allow restricted settings** (see above). |
+
+---
+
+## 🔒 Privacy
+
+- 🗂️ Saved clips are kept for **24 hours** and then **auto-deleted**.
+- 📤 Images are only sent to an AI app when **you** choose to share them.
+- 🚫 No hidden screenshots are uploaded.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! 🎉
+
+1. 🍴 Fork the repository
+2. 🌿 Create a branch: `git checkout -b feature/my-feature`
+3. 💾 Commit your changes: `git commit -m "Add my feature"`
+4. 🚀 Push the branch: `git push origin feature/my-feature`
+5. 🔃 Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+---
+
+⭐ If you like SnapCrop, give the repo a star!
