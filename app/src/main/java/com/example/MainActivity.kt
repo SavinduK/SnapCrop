@@ -446,7 +446,7 @@ private fun AppHeader(isReady: Boolean) {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(id = R.smart_select_icon),
+                    painter = painterResource(id = R.drawable.smart_select_icon),
                     contentDescription = "SnapCrop Icon",
                     modifier = Modifier.size(32.dp),
                     contentScale = ContentScale.Fit
