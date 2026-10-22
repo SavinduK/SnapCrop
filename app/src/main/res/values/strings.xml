@@ -152,7 +152,7 @@
     <string name="save_option_app_storage">Save to App Temporary Storage</string>
     <string name="save_option_app_storage_desc">Retained in app for 24 hours</string>
     <string name="toast_saved_to_app_storage">Saved to app storage (retained for 24 hours)</string>
-    <string name="section_saved_storage_title">Saved clips</string>
+    <string name="section_saved_storage_title">Saved Clips</string>
     <string name="section_saved_storage_policy">Items retained for 24 hours • Auto-deletes afterwards</string>
     <string name="saved_storage_empty_title">No Temporary Screenshots</string>
     <string name="saved_storage_empty_desc">Screenshots saved to app temporary storage will appear here for 24 hours.</string>

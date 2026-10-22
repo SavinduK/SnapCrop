@@ -160,6 +160,8 @@ fun ImageEditDialog(
     }
     var selectedColor by remember { mutableStateOf(penColors[0]) }
     var strokeWidthDp by remember { mutableFloatStateOf(6f) }
+    var eraserRadiusDp by remember { mutableFloatStateOf(28f) }
+    var currentEraserTouchPos by remember { mutableStateOf<Offset?>(null) }
 
     // Strokes & Text
     val strokes = remember { mutableStateListOf<DrawnStroke>() }
@@ -350,7 +352,7 @@ fun ImageEditDialog(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .testTag("canvas_image_edit")
-                                .pointerInput(currentTool, selectedColor, strokeWidthDp) {
+                                .pointerInput(currentTool, selectedColor, strokeWidthDp, eraserRadiusDp) {
                                     detectDragGestures(
                                         onDragStart = { offset ->
                                             when (currentTool) {
@@ -360,10 +362,13 @@ fun ImageEditDialog(
                                                     currentStrokePoints = listOf(StrokePoint(normalizedX, normalizedY))
                                                 }
                                                 EditTool.ERASER -> {
-                                                    // Erase stroke near tap/touch
+                                                    currentEraserTouchPos = offset
+                                                    val radiusPx = eraserRadiusDp.dp.toPx()
                                                     eraseStrokesNear(
-                                                        touchX = offset.x / canvasW,
-                                                        touchY = offset.y / canvasH,
+                                                        touchPos = offset,
+                                                        canvasW = canvasW,
+                                                        canvasH = canvasH,
+                                                        eraserRadiusPx = radiusPx,
                                                         strokes = strokes
                                                     )
                                                 }
@@ -384,9 +389,13 @@ fun ImageEditDialog(
                                                     currentStrokePoints = currentStrokePoints + StrokePoint(normalizedX, normalizedY)
                                                 }
                                                 EditTool.ERASER -> {
+                                                    currentEraserTouchPos = pos
+                                                    val radiusPx = eraserRadiusDp.dp.toPx()
                                                     eraseStrokesNear(
-                                                        touchX = pos.x / canvasW,
-                                                        touchY = pos.y / canvasH,
+                                                        touchPos = pos,
+                                                        canvasW = canvasW,
+                                                        canvasH = canvasH,
+                                                        eraserRadiusPx = radiusPx,
                                                         strokes = strokes
                                                     )
                                                 }
@@ -406,9 +415,11 @@ fun ImageEditDialog(
                                                 )
                                             }
                                             currentStrokePoints = emptyList()
+                                            currentEraserTouchPos = null
                                         },
                                         onDragCancel = {
                                             currentStrokePoints = emptyList()
+                                            currentEraserTouchPos = null
                                         }
                                     )
                                 }
@@ -448,6 +459,34 @@ fun ImageEditDialog(
                                         cap = StrokeCap.Round,
                                         join = StrokeJoin.Round
                                     )
+                                )
+                            }
+
+                            // Draw live visual erasing area circle when actively erasing
+                            if (currentTool == EditTool.ERASER && currentEraserTouchPos != null) {
+                                val center = currentEraserTouchPos!!
+                                val radiusPx = eraserRadiusDp.dp.toPx()
+
+                                // Semi-transparent frosted tinted fill
+                                drawCircle(
+                                    color = Color(0x3500E5FF),
+                                    radius = radiusPx,
+                                    center = center
+                                )
+
+                                // Crisp boundary ring
+                                drawCircle(
+                                    color = Color(0xFF00E5FF),
+                                    radius = radiusPx,
+                                    center = center,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+
+                                // Center precision focal dot
+                                drawCircle(
+                                    color = Color.White,
+                                    radius = 3.dp.toPx(),
+                                    center = center
                                 )
                             }
                         }
@@ -616,19 +655,57 @@ fun ImageEditDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(
-                                        text = "Drag finger over drawings to erase",
-                                        color = Color(0xFF94A3B8),
-                                        fontSize = 13.sp
-                                    )
-
-                                    TextButton(
-                                        onClick = { strokes.clear() }
+                                    // Eraser size options: Small, Medium, Large
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "Clear Drawings",
-                                            color = Color(0xFFFF6B6B),
-                                            fontWeight = FontWeight.Bold
+                                            text = "Eraser:",
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+
+                                        listOf(
+                                            Triple(14f, 8.dp, "small"),
+                                            Triple(28f, 15.dp, "medium"),
+                                            Triple(46f, 22.dp, "large")
+                                        ).forEach { (radius, dotSize, tag) ->
+                                            val isSelected = eraserRadiusDp == radius
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color(0x3300E5FF) else Color(0x20FFFFFF))
+                                                    .border(
+                                                        width = if (isSelected) 2.dp else 1.dp,
+                                                        color = if (isSelected) Color(0xFF00E5FF) else Color(0x33FFFFFF),
+                                                        shape = CircleShape
+                                                    )
+                                                    .clickable { eraserRadiusDp = radius }
+                                                    .testTag("eraser_size_$tag"),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(dotSize)
+                                                        .clip(CircleShape)
+                                                        .background(if (isSelected) Color(0xFF00E5FF) else Color.White)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    TextButton(
+                                        onClick = { strokes.clear() },
+                                        enabled = strokes.isNotEmpty()
+                                    ) {
+                                        Text(
+                                            text = "Clear All",
+                                            color = if (strokes.isNotEmpty()) Color(0xFFFF6B6B) else Color(0x66FF6B6B),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
                                         )
                                     }
                                 }
@@ -839,13 +916,62 @@ private fun ToolTabButton(
 }
 
 /**
- * Erases strokes whose points lie within touch proximity.
+ * Computes shortest distance from point (px, py) to line segment (x1, y1)-(x2, y2) in pixels.
  */
-private fun eraseStrokesNear(touchX: Float, touchY: Float, strokes: MutableList<DrawnStroke>) {
-    val eraseRadius = 0.05f // 5% of canvas dimension
+private fun distanceToSegment(
+    px: Float, py: Float,
+    x1: Float, y1: Float,
+    x2: Float, y2: Float
+): Float {
+    val dx = x2 - x1
+    val dy = y2 - y1
+    val l2 = dx * dx + dy * dy
+    if (l2 == 0f) return hypot(px - x1, py - y1)
+    val t = (((px - x1) * dx + (py - y1) * dy) / l2).coerceIn(0f, 1f)
+    val projX = x1 + t * dx
+    val projY = y1 + t * dy
+    return hypot(px - projX, py - projY)
+}
+
+/**
+ * Erases strokes whose points or line segments lie within touch proximity of the eraser circle.
+ */
+private fun eraseStrokesNear(
+    touchPos: Offset,
+    canvasW: Float,
+    canvasH: Float,
+    eraserRadiusPx: Float,
+    strokes: MutableList<DrawnStroke>
+) {
+    if (canvasW <= 0f || canvasH <= 0f) return
     strokes.removeAll { stroke ->
-        stroke.points.any { pt ->
-            hypot(pt.x - touchX, pt.y - touchY) < eraseRadius
+        val effectiveRadius = eraserRadiusPx + 4f
+        when {
+            stroke.points.size == 1 -> {
+                val pt = stroke.points[0]
+                hypot(pt.x * canvasW - touchPos.x, pt.y * canvasH - touchPos.y) <= effectiveRadius
+            }
+            stroke.points.size >= 2 -> {
+                var hit = false
+                for (i in 0 until stroke.points.size - 1) {
+                    val p1 = stroke.points[i]
+                    val p2 = stroke.points[i + 1]
+                    val dist = distanceToSegment(
+                        px = touchPos.x,
+                        py = touchPos.y,
+                        x1 = p1.x * canvasW,
+                        y1 = p1.y * canvasH,
+                        x2 = p2.x * canvasW,
+                        y2 = p2.y * canvasH
+                    )
+                    if (dist <= effectiveRadius) {
+                        hit = true
+                        break
+                    }
+                }
+                hit
+            }
+            else -> false
         }
     }
 }
