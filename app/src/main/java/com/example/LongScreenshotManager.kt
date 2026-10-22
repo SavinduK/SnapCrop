@@ -270,7 +270,6 @@ object LongScreenshotManager {
                         val prevBmp = capturedBitmaps.lastOrNull()
                         if (prevBmp != null && LongScreenshotStitcher.isEssentiallyIdentical(prevBmp, swBitmap, statusBarH, navBarH)) {
                             // Bottom of the content reached (screen didn't move)
-                            Toast.makeText(service, "End of page reached", Toast.LENGTH_SHORT).show()
                             finishAndShowTopPill(service)
                         } else {
                             // Successfully captured the next page!

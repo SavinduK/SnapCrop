@@ -254,7 +254,6 @@ class CropOverlayActivity : ComponentActivity() {
 
     private fun handleExtendLongScreenshot() {
         if (KeyCaptureService.isServiceRunning()) {
-            Toast.makeText(this, "Starting long screenshot…", Toast.LENGTH_SHORT).show()
             val initialBitmap = ScreenshotHolder.bitmap?.copy(Bitmap.Config.ARGB_8888, false)
             KeyCaptureService.instance?.performLongScreenCapture(initialBitmap)
             finish()
@@ -552,7 +551,6 @@ class CropOverlayActivity : ComponentActivity() {
                 ) {
                     try {
                         startActivity(lensIntent)
-                        Toast.makeText(this, "Searching with Google Lens…", Toast.LENGTH_SHORT).show()
                         launched = true
                     } catch (e: Exception) {
                         Log.d(TAG, "Lens direct send failed", e)
@@ -574,7 +572,6 @@ class CropOverlayActivity : ComponentActivity() {
                     ) {
                         try {
                             startActivity(googleSearchIntent)
-                            Toast.makeText(this, "Opening in Google Search…", Toast.LENGTH_SHORT).show()
                             launched = true
                         } catch (e: Exception) {
                             Log.d(TAG, "Google app send failed", e)
@@ -598,7 +595,6 @@ class CropOverlayActivity : ComponentActivity() {
             ) {
                 try {
                     startActivity(sendIntent)
-                    Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                     launched = true
                 } catch (e: Exception) {
                     Log.d(TAG, "Error starting sendIntent for ${selectedModel.displayName}", e)
@@ -618,7 +614,6 @@ class CropOverlayActivity : ComponentActivity() {
                 if (launchIntent != null) {
                     try {
                         startActivity(launchIntent)
-                        Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                         launched = true
                     } catch (e: Exception) {
                         Log.d(TAG, "Error starting launchIntent for ${selectedModel.displayName}", e)
@@ -630,7 +625,6 @@ class CropOverlayActivity : ComponentActivity() {
             if (!launched) {
                 try {
                     startActivity(sendIntent)
-                    Toast.makeText(this, "Opening in ${selectedModel.displayName}…", Toast.LENGTH_SHORT).show()
                     launched = true
                 } catch (e: Exception) {
                     Log.d(TAG, "Direct launch without check failed: ${e.message}")
@@ -652,7 +646,6 @@ class CropOverlayActivity : ComponentActivity() {
                 ) {
                     try {
                         startActivity(googleSendIntent)
-                        Toast.makeText(this, getString(R.string.toast_sending_to_gemini), Toast.LENGTH_SHORT).show()
                         launched = true
                     } catch (e: Exception) {
                         Log.d(TAG, "Google app send start failed: ${e.message}")
@@ -1424,33 +1417,6 @@ private fun CropOverlayContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // OCR In-progress loading indicator
-                    if (isOcrProcessing) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xF20F172A),
-                            border = BorderStroke(1.dp, Color(0x6600E5FF))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF00E5FF)
-                                )
-                                Text(
-                                    text = stringResource(R.string.ocr_extracting),
-                                    color = Color(0xFF00E5FF),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-
                     if (isOcrActive && ocrElements.isNotEmpty()) {
                         // Circle to Search OCR Action Dock
                         CircleToSearchOcrDock(
@@ -1739,7 +1705,6 @@ private fun CropOverlayContent(
                                 ScreenshotHolder.isLongScreenshot = true
                                 ScreenshotHolder.pageCount = simulationPages
                             } else {
-                                Toast.makeText(context, "End of page reached", Toast.LENGTH_SHORT).show()
                                 isSimulatingScrollCapture = false
                                 showTopPillOnly = true
                             }
@@ -2435,24 +2400,6 @@ private fun OcrHighlightOverlay(
             }
         }
 
-        // Small floating guidance badge inside selection box
-        val hintTop = (selectionRect.top - 28.dp.value).coerceAtLeast(16f)
-        val hintLeft = selectionRect.left.coerceAtLeast(16f)
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(hintLeft.roundToInt(), hintTop.roundToInt()) }
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xD90F172A))
-                .border(1.dp, Color(0x3300E5FF), RoundedCornerShape(12.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "Tap or drag words to select",
-                color = Color(0xFF00E5FF),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
     }
 }
 
