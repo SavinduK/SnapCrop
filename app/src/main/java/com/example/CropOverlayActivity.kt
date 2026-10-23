@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
@@ -98,7 +99,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1163,6 +1166,13 @@ private fun CropOverlayContent(
     val isShareToAiEnabled = remember { CropFeaturePreferenceManager.isShareToAiEnabled(context) }
     val isBatchModeEnabled = remember { CropFeaturePreferenceManager.isBatchSelectEnabled(context) }
     val isLongScreenshotEnabled = remember { CropFeaturePreferenceManager.isLongScreenshotEnabled(context) }
+    val isMathSolverEnabled = remember { CropFeaturePreferenceManager.isMathSolverEnabled(context) }
+
+    // Math Solver State
+    var showMathSolverDialog by remember { mutableStateOf(false) }
+    var isMathSolving by remember { mutableStateOf(false) }
+    var mathSolution by remember { mutableStateOf<MathSolverEngine.MathSolution?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     // Long Screenshot State
     var showFullSizeViewer by remember { mutableStateOf(false) }
@@ -1379,7 +1389,7 @@ private fun CropOverlayContent(
         if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0)
+            val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0) + (if (isMathSolverEnabled) 1 else 0)
             val estimatedToolbarWidthDp = if (isOcrActive) 330.dp else (16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1)))
             val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
             val topSafePx = with(density) { 116.dp.toPx() }
@@ -1532,6 +1542,36 @@ private fun CropOverlayContent(
                                         AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
                                         else -> GeminiSparkleIcon()
                                     }
+                                }
+                            }
+
+                            // Math Solver Button - conditional on Math Solver toggle
+                            if (isMathSolverEnabled) {
+                                CropActionCircleButton(
+                                    onClick = {
+                                        val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
+                                        if (bmp != null) {
+                                            isMathSolving = true
+                                            mathSolution = null
+                                            showMathSolverDialog = true
+                                            coroutineScope.launch {
+                                                val sol = MathSolverEngine.recognizeAndSolve(bmp)
+                                                mathSolution = sol
+                                                isMathSolving = false
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Crop area unavailable", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    contentDescription = stringResource(R.string.crop_btn_math_solver),
+                                    testTag = "btn_math_solver_crop"
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Functions,
+                                        contentDescription = "Solve Math",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
                             }
 
@@ -2144,6 +2184,19 @@ private fun CropOverlayContent(
                     }
                 )
             }
+        }
+
+        // 7. Math Solver Dialog
+        if (showMathSolverDialog) {
+            MathSolverDialog(
+                solution = mathSolution,
+                isLoading = isMathSolving,
+                onDismiss = {
+                    showMathSolverDialog = false
+                    isMathSolving = false
+                    mathSolution = null
+                }
+            )
         }
     }
 }

@@ -132,11 +132,27 @@
     <string name="feature_long_screenshot_title">Long Screenshot</string>
     <string name="feature_long_screenshot_desc">Enable scroll capture in the crop overlay to capture full web pages and long articles</string>
 
+    <string name="feature_math_solver_title">Math Equation Solver</string>
+    <string name="feature_math_solver_desc">Identify math equations in selections, convert to LaTeX formula, and solve step-by-step</string>
+
     <string name="feature_long_card_title">Long Screenshot</string>
     <string name="feature_long_card_desc">Scroll and stitch full-page articles, long chats, or documents into one seamless image.</string>
 
     <string name="btn_test_standard_capture">Test Quick Crop</string>
     <string name="btn_test_long_capture">Test Long Screenshot</string>
+
+    <string name="crop_btn_math_solver">Solve Math</string>
+    <string name="math_solver_title">Math Solver</string>
+    <string name="math_solver_formula_label">Formula &amp; LaTeX</string>
+    <string name="math_solver_answer_label">Answer</string>
+    <string name="math_solver_steps_label">Steps</string>
+    <string name="math_solver_copy_answer">Copy Answer</string>
+    <string name="math_solver_copy_latex">Copy LaTeX</string>
+    <string name="math_solver_share">Share Solution</string>
+    <string name="math_solver_no_equation">No math equation or expression detected in this area</string>
+    <string name="math_solver_solving">Solving equation…</string>
+    <string name="math_solver_copied_answer">Answer copied to clipboard</string>
+    <string name="math_solver_copied_latex">LaTeX formula copied to clipboard</string>
 
     <string name="crop_btn_long_screenshot">Scroll Capture</string>
     <string name="crop_btn_scroll_more">Capture More</string>

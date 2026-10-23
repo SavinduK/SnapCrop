@@ -15,6 +15,7 @@ object CropFeaturePreferenceManager {
     private const val KEY_SHARE_TO_AI = "feature_share_to_ai"
     private const val KEY_BATCH_SELECT = "feature_batch_select"
     private const val KEY_LONG_SCREENSHOT = "feature_long_screenshot"
+    private const val KEY_MATH_SOLVER = "feature_math_solver"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -42,5 +43,13 @@ object CropFeaturePreferenceManager {
 
     fun setLongScreenshotEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_LONG_SCREENSHOT, enabled).apply()
+    }
+
+    fun isMathSolverEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_MATH_SOLVER, true)
+    }
+
+    fun setMathSolverEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_MATH_SOLVER, enabled).apply()
     }
 }

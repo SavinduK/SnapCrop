@@ -30,6 +30,7 @@ SnapCrop lets you capture any part of your screen in one tap, crop it, copy the 
 | ⚡ **3x Power Button Tap** | Press the power button 3 times to capture instantly. |
 | 📜 **Long Screenshot** | Scroll and stitch full web pages, long chats, or documents into one image. |
 | 🔤 **Select Text (OCR)** | Recognise text from your selection, copy it, or search it on Google. |
+| 📐 **Math Solver** | Identify math equations, convert to LaTeX, and calculate step-by-step solutions. |
 | ✨ **Ask AI** | Explain, summarise, translate, or solve anything you crop with one tap. |
 | 📤 **Quick Share** | Send the cropped image to any app with an instant preview. |
 | 📋 **Copy & Save** | Copy to clipboard or save to your photo gallery. |
@@ -136,7 +137,15 @@ SnapCrop does **not** use it to read your passwords or personal messages.
 1. Turn on **Long Screenshot** in the **Crop Modes & Actions** section.
 2. Open the page, chat, or article you want to capture.
 3. Trigger SnapCrop and tap the long screenshot option.
-4. Wait while it scrolls and stitches everything together. You will see *"Starting long screenshot..."*.
+4. Scroll page-by-page or finish to stitch the full document into a seamless image.
+
+### 📐 Solving Math Equations
+
+1. Enable **Math Equation Solver** in the **Crop Modes & Actions** section.
+2. Trigger SnapCrop and crop any equation or arithmetic expression on your screen.
+3. Tap the **Math (∑ / fx)** icon on the crop toolbar.
+4. SnapCrop recognizes the formula with Google ML Kit, renders the **LaTeX formula**, and calculates step-by-step solutions and the final answer.
+5. Tap **Copy**, **Copy LaTeX**, or **Share** to export the solution.
 
 ---
 

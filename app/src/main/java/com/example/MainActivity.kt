@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
@@ -176,6 +177,10 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
         mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
     }
 
+    var isMathSolverEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isMathSolverEnabled(context))
+    }
+
     var currentDestination by remember {
         mutableStateOf(if (navigateTo == MainActivity.SECTION_SAVED) MainScreenDestination.SAVED_IMAGES else MainScreenDestination.HOME)
     }
@@ -197,6 +202,7 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
                 isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
+                isMathSolverEnabled = CropFeaturePreferenceManager.isMathSolverEnabled(context)
                 storageRefreshTrigger = System.currentTimeMillis()
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
@@ -319,6 +325,27 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                     CropFeaturePreferenceManager.setLongScreenshotEnabled(context, enabled)
                 },
                 testTag = "toggle_long_screenshot"
+            )
+
+            // Toggle: Math Equation Solver (Default: ON)
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_math_solver_title),
+                description = stringResource(R.string.feature_math_solver_desc),
+                customIcon = { tint ->
+                    Icon(
+                        imageVector = Icons.Default.Functions,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(22.dp)
+                    )
+                },
+                iconTint = Color(0xFF00E5FF),
+                isChecked = isMathSolverEnabled,
+                onCheckedChange = { enabled ->
+                    isMathSolverEnabled = enabled
+                    CropFeaturePreferenceManager.setMathSolverEnabled(context, enabled)
+                },
+                testTag = "toggle_math_solver"
             )
 
             // Section: AI Model to Share (Gemini default, ChatGPT & Claude) - only when Share to AI is active
