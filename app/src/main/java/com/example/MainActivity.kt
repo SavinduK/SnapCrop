@@ -371,19 +371,6 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                         testTag = "ai_card_gemini"
                     )
 
-                    val isGoogleSearchInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.GOOGLE_SEARCH)
-                    AiModelOptionCard(
-                        model = AiModelPreferenceManager.AiModel.GOOGLE_SEARCH,
-                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GOOGLE_SEARCH,
-                        isInstalled = isGoogleSearchInstalled,
-                        isDefault = false,
-                        onSelect = {
-                            currentAiModel = AiModelPreferenceManager.AiModel.GOOGLE_SEARCH
-                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GOOGLE_SEARCH)
-                        },
-                        testTag = "ai_card_google_search"
-                    )
-
                     val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
                     AiModelOptionCard(
                         model = AiModelPreferenceManager.AiModel.CHATGPT,

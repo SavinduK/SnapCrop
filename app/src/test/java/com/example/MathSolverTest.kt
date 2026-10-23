@@ -29,16 +29,16 @@ class MathSolverTest {
 
     @Test
     fun testMathSolverFeatureToggle() {
-        // Default should be enabled
-        assertTrue(CropFeaturePreferenceManager.isMathSolverEnabled(context))
-
-        // Set to false
-        CropFeaturePreferenceManager.setMathSolverEnabled(context, false)
+        // Default should be disabled
         assertFalse(CropFeaturePreferenceManager.isMathSolverEnabled(context))
 
-        // Set back to true
+        // Set to true
         CropFeaturePreferenceManager.setMathSolverEnabled(context, true)
         assertTrue(CropFeaturePreferenceManager.isMathSolverEnabled(context))
+
+        // Set back to false
+        CropFeaturePreferenceManager.setMathSolverEnabled(context, false)
+        assertFalse(CropFeaturePreferenceManager.isMathSolverEnabled(context))
     }
 
     @Test

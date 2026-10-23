@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.SearchManager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -73,6 +74,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Search
@@ -249,6 +251,9 @@ class CropOverlayActivity : ComponentActivity() {
                     },
                     onCopyFullScreenshot = { bmp ->
                         handleCopyFullBitmap(bmp)
+                    },
+                    onSearchGoogleImage = { bmp ->
+                        handleSearchGoogleWithImage(bmp)
                     }
                 )
             }
@@ -997,6 +1002,205 @@ class CropOverlayActivity : ComponentActivity() {
     }
 
     /**
+     * Sends the cropped selection photo directly to Google Search (Google Lens visual search).
+     * Never opens the system share chooser; if Google Search is not installed, directs to Play Store.
+     */
+    internal fun handleSearchGoogleWithImage(bitmap: Bitmap) {
+        val googleSearchPkg = "com.google.android.googlequicksearchbox"
+        val googleLensPkg = "com.google.ar.lens"
+
+        try {
+            val googleResolved = packageManager.queryIntentActivities(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    setPackage(googleSearchPkg)
+                },
+                0
+            )
+            val lensResolved = packageManager.queryIntentActivities(
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    setPackage(googleLensPkg)
+                },
+                0
+            )
+            val isGoogleInstalled = googleResolved.isNotEmpty() ||
+                AiModelPreferenceManager.isPackageInstalled(this, googleSearchPkg)
+            val isLensInstalled = lensResolved.isNotEmpty() ||
+                AiModelPreferenceManager.isPackageInstalled(this, googleLensPkg)
+
+            if (!isGoogleInstalled && !isLensInstalled) {
+                Toast.makeText(
+                    this,
+                    "Google Search not installed. Opening Play Store…",
+                    Toast.LENGTH_SHORT
+                ).show()
+                openGoogleSearchInPlayStore()
+                return
+            }
+
+            val imagesDir = File(cacheDir, "images").apply { if (!exists()) mkdirs() }
+            val croppedFile = File(imagesDir, "google_search_${System.currentTimeMillis()}.png")
+            FileOutputStream(croppedFile).use { outStream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
+            }
+
+            val contentUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.fileprovider",
+                croppedFile
+            )
+
+            listOf(googleSearchPkg, googleLensPkg).forEach { pkg ->
+                try {
+                    grantUriPermission(pkg, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not pre-grant URI permission to $pkg", e)
+                }
+            }
+
+            fun createImageSendIntent(): Intent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, contentUri)
+                clipData = ClipData.newUri(contentResolver, "Google Search", contentUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            var launched = false
+
+            // Strategy 1: Launch the exact Google Lens / "Search image" component directly so no chooser appears.
+            for (resolvedList in listOf(googleResolved, lensResolved)) {
+                if (launched || resolvedList.isEmpty()) continue
+                val sortedCandidates = resolvedList.sortedByDescending { info ->
+                    val className = info.activityInfo?.name?.lowercase() ?: ""
+                    val label = try {
+                        info.loadLabel(packageManager).toString().lowercase()
+                    } catch (_: Exception) {
+                        ""
+                    }
+                    when {
+                        className.contains("lens") -> 100
+                        label.contains("lens") || label.contains("search image") -> 90
+                        className.contains("gemini") || className.contains("bard") || className.contains("robin") -> -50
+                        label.contains("gemini") -> -50
+                        className.contains("search") || label.contains("search") -> 50
+                        else -> 10
+                    }
+                }
+
+                for (candidate in sortedCandidates) {
+                    val actInfo = candidate.activityInfo ?: continue
+                    val explicitIntent = createImageSendIntent().apply {
+                        component = ComponentName(actInfo.packageName, actInfo.name)
+                    }
+                    try {
+                        startActivity(explicitIntent)
+                        launched = true
+                        break
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Explicit component launch failed for ${actInfo.name}", e)
+                    }
+                }
+            }
+
+            // Strategy 2: If package is installed on device but queryIntentActivities was filtered,
+            // attempt known Google Lens entry points and direct package intents (never chooser).
+            if (!launched) {
+                if (isGoogleInstalled) {
+                    val knownLensComponents = listOf(
+                        ComponentName(googleSearchPkg, "com.google.android.apps.search.lens.LensShareEntryPointActivity"),
+                        ComponentName(googleSearchPkg, "com.google.android.apps.search.lens.LensExportedActivity")
+                    )
+                    for (comp in knownLensComponents) {
+                        if (launched) break
+                        try {
+                            startActivity(createImageSendIntent().apply { component = comp })
+                            launched = true
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Known Lens component $comp failed", e)
+                        }
+                    }
+                }
+
+                if (!launched && isLensInstalled) {
+                    try {
+                        startActivity(createImageSendIntent().apply { setPackage(googleLensPkg) })
+                        launched = true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Direct package send to Google Lens failed", e)
+                    }
+                }
+
+                if (!launched && isGoogleInstalled) {
+                    try {
+                        startActivity(createImageSendIntent().apply { setPackage(googleSearchPkg) })
+                        launched = true
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Direct package send to Google Search failed", e)
+                    }
+                }
+            }
+
+            // Strategy 3: Fallback straight to Google Play Store (never open share menu)
+            if (!launched) {
+                Toast.makeText(
+                    this,
+                    "Google Search not installed. Opening Play Store…",
+                    Toast.LENGTH_SHORT
+                ).show()
+                openGoogleSearchInPlayStore()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to search with image", e)
+            Toast.makeText(this, "Error opening Google Search", Toast.LENGTH_SHORT).show()
+        } finally {
+            finish()
+        }
+    }
+
+    /**
+     * Directs the user to the Google app listing on the Google Play Store.
+     */
+    private fun openGoogleSearchInPlayStore() {
+        val googleSearchPkg = "com.google.android.googlequicksearchbox"
+        val marketUri = Uri.parse("market://details?id=$googleSearchPkg")
+
+        // 1. If Google Play Store app is installed, target it directly
+        if (AiModelPreferenceManager.isPackageInstalled(this, "com.android.vending")) {
+            try {
+                val playStoreAppIntent = Intent(Intent.ACTION_VIEW, marketUri).apply {
+                    setPackage("com.android.vending")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(playStoreAppIntent)
+                return
+            } catch (_: Exception) {
+            }
+        }
+
+        // 2. Try generic market:// handler
+        try {
+            val marketIntent = Intent(Intent.ACTION_VIEW, marketUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(marketIntent)
+            return
+        } catch (_: Exception) {
+        }
+
+        // 3. Fallback to Google Play Store web listing
+        try {
+            val webPlayStoreUri = Uri.parse("https://play.google.com/store/apps/details?id=$googleSearchPkg")
+            val webIntent = Intent(Intent.ACTION_VIEW, webPlayStoreUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(webIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to open Play Store for Google Search", e)
+        }
+    }
+
+    /**
      * Copies recognized text to the system clipboard.
      */
     private fun handleCopyText(text: String) {
@@ -1145,7 +1349,8 @@ private fun CropOverlayContent(
     onExtendLongScreenshotRequested: () -> Unit,
     onSaveFullScreenshot: (Bitmap) -> Unit,
     onShareFullScreenshot: (Bitmap) -> Unit,
-    onCopyFullScreenshot: (Bitmap) -> Unit
+    onCopyFullScreenshot: (Bitmap) -> Unit,
+    onSearchGoogleImage: (Bitmap) -> Unit
 ) {
     val context = LocalContext.current
     var selectionRect by remember { mutableStateOf<RectF?>(null) }
@@ -1361,6 +1566,33 @@ private fun CropOverlayContent(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+
+                    // Google Search (Magnifying Lens) Icon - visible whenever a section of the screen is selected
+                    if (hasValidSelection && currentRect != null) {
+                        IconButton(
+                            onClick = {
+                                val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
+                                if (bmp != null) {
+                                    onSearchGoogleImage(bmp)
+                                } else {
+                                    Toast.makeText(context, "Selection unavailable", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xD90F172A))
+                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
+                                .testTag("btn_search_image_top")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = stringResource(R.string.crop_btn_google_search),
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
                 }
 
                 // Right Side Control: Close Button (X)
@@ -1389,7 +1621,8 @@ private fun CropOverlayContent(
         if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             val marginPx = with(density) { 14.dp.toPx() }
             val toolbarHeightPx = with(density) { 60.dp.toPx() }
-            val activeButtonsCount = 4 + (if (isShareToAiEnabled) 1 else 0) + (if (isBatchModeEnabled) 1 else 0) + (if (isMathSolverEnabled) 1 else 0)
+            val hasMoreMenu = isShareToAiEnabled || isMathSolverEnabled
+            val activeButtonsCount = 5 + (if (hasMoreMenu) 1 else 0)
             val estimatedToolbarWidthDp = if (isOcrActive) 330.dp else (16.dp + (42.dp * activeButtonsCount) + (6.dp * (activeButtonsCount - 1)))
             val toolbarWidthPx = with(density) { estimatedToolbarWidthDp.toPx() }
             val topSafePx = with(density) { 116.dp.toPx() }
@@ -1522,60 +1755,7 @@ private fun CropOverlayContent(
                                     SelectTextIcon(tint = Color.White)
                                 }
 
-                            // 2. Ask AI Button (Gemini, Google Search, ChatGPT, or Claude) - conditional on Share to AI toggle
-                            if (isShareToAiEnabled) {
-                                CropActionCircleButton(
-                                    onClick = {
-                                        onGeminiRequested(currentRect, editedCropBitmap)
-                                    },
-                                    contentDescription = when (selectedAiModel) {
-                                        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> stringResource(R.string.crop_btn_google_search)
-                                        AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
-                                        AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
-                                        else -> stringResource(R.string.crop_btn_gemini)
-                                    },
-                                    testTag = "btn_gemini_crop"
-                                ) {
-                                    when (selectedAiModel) {
-                                        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> GoogleSearchIcon(modifier = Modifier.size(20.dp))
-                                        AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon()
-                                        AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon()
-                                        else -> GeminiSparkleIcon()
-                                    }
-                                }
-                            }
-
-                            // Math Solver Button - conditional on Math Solver toggle
-                            if (isMathSolverEnabled) {
-                                CropActionCircleButton(
-                                    onClick = {
-                                        val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
-                                        if (bmp != null) {
-                                            isMathSolving = true
-                                            mathSolution = null
-                                            showMathSolverDialog = true
-                                            coroutineScope.launch {
-                                                val sol = MathSolverEngine.recognizeAndSolve(bmp)
-                                                mathSolution = sol
-                                                isMathSolving = false
-                                            }
-                                        } else {
-                                            Toast.makeText(context, "Crop area unavailable", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    contentDescription = stringResource(R.string.crop_btn_math_solver),
-                                    testTag = "btn_math_solver_crop"
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Functions,
-                                        contentDescription = "Solve Math",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-
-                            // 3. Edit Button (Image Editing Window)
+                            // 2. Edit Button (Image Editing Window)
                             CropActionCircleButton(
                                 onClick = {
                                     val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
@@ -1600,7 +1780,7 @@ private fun CropOverlayContent(
                                 )
                             }
 
-                            // 4. Copy to Clipboard Button
+                            // 3. Copy to Clipboard Button
                             CropActionCircleButton(
                                 onClick = {
                                     onCopyRequested(currentRect, editedCropBitmap)
@@ -1611,7 +1791,7 @@ private fun CropOverlayContent(
                                 CopyIcon(tint = Color.White)
                             }
 
-                            // 5. Share Button
+                            // 4. Share Button
                             CropActionCircleButton(
                                 onClick = {
                                     onShareRequested(currentRect, editedCropBitmap)
@@ -1622,7 +1802,7 @@ private fun CropOverlayContent(
                                 ShareNodesIcon(tint = Color.White)
                             }
 
-                            // 6. Save Button (Dropdown Menu: Save to Device or Save to App Temporary Storage)
+                            // 5. Save Button (Dropdown Menu: Save to Device or Save to App Temporary Storage)
                             var showSaveDropdownMenu by remember { mutableStateOf(false) }
                             Box {
                                 CropActionCircleButton(
@@ -1703,6 +1883,103 @@ private fun CropOverlayContent(
                                         },
                                         modifier = Modifier.testTag("menu_opt_save_app_storage")
                                     )
+                                }
+                            }
+
+                            // 6. More Options Button (Ask AI & Math Solver) - only visible if at least one is enabled
+                            if (hasMoreMenu) {
+                                var showMoreDropdownMenu by remember { mutableStateOf(false) }
+                                Box {
+                                    CropActionCircleButton(
+                                        onClick = {
+                                            showMoreDropdownMenu = true
+                                        },
+                                        contentDescription = "More options",
+                                        testTag = "btn_more_options_crop"
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "More options",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showMoreDropdownMenu,
+                                        onDismissRequest = { showMoreDropdownMenu = false },
+                                        modifier = Modifier
+                                            .background(Color(0xF20F172A))
+                                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+                                    ) {
+                                        if (isShareToAiEnabled) {
+                                            val aiTitle = when (selectedAiModel) {
+                                                AiModelPreferenceManager.AiModel.CHATGPT -> "Ask ChatGPT"
+                                                AiModelPreferenceManager.AiModel.CLAUDE -> "Ask Claude"
+                                                else -> "Ask Gemini"
+                                            }
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        text = aiTitle,
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 13.sp
+                                                    )
+                                                },
+                                                leadingIcon = {
+                                                    when (selectedAiModel) {
+                                                        AiModelPreferenceManager.AiModel.CHATGPT -> ChatGptIcon(modifier = Modifier.size(18.dp))
+                                                        AiModelPreferenceManager.AiModel.CLAUDE -> ClaudeIcon(modifier = Modifier.size(18.dp))
+                                                        else -> GeminiSparkleIcon(modifier = Modifier.size(18.dp))
+                                                    }
+                                                },
+                                                onClick = {
+                                                    showMoreDropdownMenu = false
+                                                    onGeminiRequested(currentRect, editedCropBitmap)
+                                                },
+                                                modifier = Modifier.testTag("menu_opt_ask_ai")
+                                            )
+                                        }
+
+                                        if (isMathSolverEnabled) {
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        text = stringResource(R.string.crop_btn_math_solver),
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 13.sp
+                                                    )
+                                                },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Functions,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF38BDF8),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                },
+                                                onClick = {
+                                                    showMoreDropdownMenu = false
+                                                    val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
+                                                    if (bmp != null) {
+                                                        isMathSolving = true
+                                                        mathSolution = null
+                                                        showMathSolverDialog = true
+                                                        coroutineScope.launch {
+                                                            val sol = MathSolverEngine.recognizeAndSolve(bmp)
+                                                            mathSolution = sol
+                                                            isMathSolving = false
+                                                        }
+                                                    } else {
+                                                        Toast.makeText(context, "Crop area unavailable", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.testTag("menu_opt_math_solver")
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

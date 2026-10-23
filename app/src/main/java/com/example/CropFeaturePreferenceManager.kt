@@ -22,7 +22,7 @@ object CropFeaturePreferenceManager {
     }
 
     fun isShareToAiEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_SHARE_TO_AI, true)
+        return getPrefs(context).getBoolean(KEY_SHARE_TO_AI, false)
     }
 
     fun setShareToAiEnabled(context: Context, enabled: Boolean) {
@@ -46,7 +46,7 @@ object CropFeaturePreferenceManager {
     }
 
     fun isMathSolverEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_MATH_SOLVER, true)
+        return getPrefs(context).getBoolean(KEY_MATH_SOLVER, false)
     }
 
     fun setMathSolverEnabled(context: Context, enabled: Boolean) {
