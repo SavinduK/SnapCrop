@@ -1,8 +1,11 @@
 package com.example
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -52,6 +55,7 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
@@ -82,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -767,16 +772,63 @@ fun SavedImagePreviewDialog(
                         text = "Screenshot Preview",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        fontSize = 15.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 6.dp)
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // 1. Share Button (clean icon, no circular glow)
+                        // 1. Copy to Clipboard Button (clean icon, no circular glow)
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = {
+                                        try {
+                                            val contentUri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.applicationContext.packageName}.fileprovider",
+                                                file
+                                            )
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            val clip = ClipData.newUri(context.contentResolver, "Saved Screenshot", contentUri)
+                                            clipboard.setPrimaryClip(clip)
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.toast_copied_to_clipboard),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } catch (e: Exception) {
+                                            if (previewBmp != null) {
+                                                ScreenshotExportHelper.copyToClipboard(context, previewBmp)
+                                            } else {
+                                                Toast.makeText(context, "Failed to copy image", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                )
+                                .testTag("btn_preview_copy"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // 2. Share Button (clean icon, no circular glow)
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -798,10 +850,10 @@ fun SavedImagePreviewDialog(
                             )
                         }
 
-                        // 2. Save Button (clean icon, no circular glow)
+                        // 3. Save Button (clean icon, no circular glow)
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
@@ -823,10 +875,10 @@ fun SavedImagePreviewDialog(
                             )
                         }
 
-                        // 3. Close Button (clean icon, no circular glow)
+                        // 4. Close Button (clean icon, no circular glow)
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(34.dp)
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
