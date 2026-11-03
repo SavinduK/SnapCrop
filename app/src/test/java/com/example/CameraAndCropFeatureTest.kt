@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -125,10 +126,27 @@ class CameraAndCropFeatureTest {
 
         val refreshBounds = refreshNode.fetchSemanticsNode().boundsInRoot
         val cameraBounds = cameraNode.fetchSemanticsNode().boundsInRoot
+        val gapPx = cameraBounds.left - refreshBounds.right
         assertTrue(
-            "Expected camera icon on the top-right end of the Saved Clips header",
-            cameraBounds.left >= refreshBounds.right
+            "Expected generous spacing (>= 16px) between refresh and camera icons in Saved Clips title bar, got $gapPx",
+            gapPx >= 16f
         )
+    }
+
+    @Test
+    fun `saved clips card hides Open text and clicking card opens Saved Clips screen`() {
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                SnapCropMainScreen()
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithText("Open").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("card_nav_saved_images").assertIsDisplayed().performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("saved_images_screen").assertIsDisplayed()
     }
 
     @Test
