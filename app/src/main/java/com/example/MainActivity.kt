@@ -13,9 +13,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas as ComposeCanvas
 import androidx.compose.foundation.Image
@@ -40,14 +37,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Security
@@ -161,24 +157,12 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
         mutableStateOf(TriggerPreferenceManager.getTriggerMode(context))
     }
 
-    var currentAiModel by remember {
-        mutableStateOf(AiModelPreferenceManager.getSelectedModel(context))
-    }
-
-    var isShareToAiEnabled by remember {
-        mutableStateOf(CropFeaturePreferenceManager.isShareToAiEnabled(context))
-    }
-
     var isBatchSelectEnabled by remember {
         mutableStateOf(CropFeaturePreferenceManager.isBatchSelectEnabled(context))
     }
 
     var isLongScreenshotEnabled by remember {
         mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
-    }
-
-    var isMathSolverEnabled by remember {
-        mutableStateOf(CropFeaturePreferenceManager.isMathSolverEnabled(context))
     }
 
     var currentDestination by remember {
@@ -198,11 +182,8 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 isAccessibilityEnabled = checkAccessibilityEnabled(context)
                 isBatteryIgnored = checkBatteryIgnored(context)
                 currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
-                currentAiModel = AiModelPreferenceManager.getSelectedModel(context)
-                isShareToAiEnabled = CropFeaturePreferenceManager.isShareToAiEnabled(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
                 isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
-                isMathSolverEnabled = CropFeaturePreferenceManager.isMathSolverEnabled(context)
                 storageRefreshTrigger = System.currentTimeMillis()
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
@@ -297,20 +278,6 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 modifier = Modifier.padding(start = 4.dp, top = 6.dp)
             )
 
-            // Toggle: Share to AI Mode
-            ToggleOptionCard(
-                title = stringResource(R.string.feature_share_ai_title),
-                description = stringResource(R.string.feature_share_ai_desc),
-                icon = Icons.Default.AutoAwesome,
-                iconTint = Color(0xFFC084FC),
-                isChecked = isShareToAiEnabled,
-                onCheckedChange = { enabled ->
-                    isShareToAiEnabled = enabled
-                    CropFeaturePreferenceManager.setShareToAiEnabled(context, enabled)
-                },
-                testTag = "toggle_share_to_ai"
-            )
-
             // Toggle: Long Screenshot Button (Default: ON)
             ToggleOptionCard(
                 title = stringResource(R.string.feature_long_screenshot_title),
@@ -327,79 +294,7 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 testTag = "toggle_long_screenshot"
             )
 
-            // Toggle: Math Equation Solver (Default: ON)
-            ToggleOptionCard(
-                title = stringResource(R.string.feature_math_solver_title),
-                description = stringResource(R.string.feature_math_solver_desc),
-                customIcon = { tint ->
-                    Icon(
-                        imageVector = Icons.Default.Functions,
-                        contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(22.dp)
-                    )
-                },
-                iconTint = Color(0xFF00E5FF),
-                isChecked = isMathSolverEnabled,
-                onCheckedChange = { enabled ->
-                    isMathSolverEnabled = enabled
-                    CropFeaturePreferenceManager.setMathSolverEnabled(context, enabled)
-                },
-                testTag = "toggle_math_solver"
-            )
-
-            // Section: AI Model to Share (Gemini default, ChatGPT & Claude) - only when Share to AI is active
-            AnimatedVisibility(visible = isShareToAiEnabled) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        text = stringResource(R.string.section_ai_model),
-                        color = TextPrimary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(start = 4.dp, top = 6.dp)
-                    )
-
-                    AiModelOptionCard(
-                        model = AiModelPreferenceManager.AiModel.GEMINI,
-                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.GEMINI,
-                        isInstalled = true,
-                        isDefault = true,
-                        onSelect = {
-                            currentAiModel = AiModelPreferenceManager.AiModel.GEMINI
-                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.GEMINI)
-                        },
-                        testTag = "ai_card_gemini"
-                    )
-
-                    val isChatGptInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CHATGPT)
-                    AiModelOptionCard(
-                        model = AiModelPreferenceManager.AiModel.CHATGPT,
-                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CHATGPT,
-                        isInstalled = isChatGptInstalled,
-                        isDefault = false,
-                        onSelect = {
-                            currentAiModel = AiModelPreferenceManager.AiModel.CHATGPT
-                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CHATGPT)
-                        },
-                        testTag = "ai_card_chatgpt"
-                    )
-
-                    val isClaudeInstalled = AiModelPreferenceManager.isModelInstalled(context, AiModelPreferenceManager.AiModel.CLAUDE)
-                    AiModelOptionCard(
-                        model = AiModelPreferenceManager.AiModel.CLAUDE,
-                        isSelected = currentAiModel == AiModelPreferenceManager.AiModel.CLAUDE,
-                        isInstalled = isClaudeInstalled,
-                        isDefault = false,
-                        onSelect = {
-                            currentAiModel = AiModelPreferenceManager.AiModel.CLAUDE
-                            AiModelPreferenceManager.setSelectedModel(context, AiModelPreferenceManager.AiModel.CLAUDE)
-                        },
-                        testTag = "ai_card_claude"
-                    )
-                }
-            }
-
-            // Section: What You Can Do (Gemini AI, Share with preview, Copy & Save)
+            // Section: What You Can Do
             Text(
                 text = stringResource(R.string.section_what_you_can_do),
                 color = TextPrimary,
@@ -685,10 +580,10 @@ private fun FeaturesGrid() {
             description = stringResource(R.string.feature_ocr_desc)
         )
         FeatureItemCard(
-            icon = Icons.Default.AutoAwesome,
+            icon = Icons.Default.PhotoCamera,
             iconTint = Color(0xFFC084FC),
-            title = stringResource(R.string.feature_gemini_title),
-            description = stringResource(R.string.feature_gemini_desc)
+            title = stringResource(R.string.feature_camera_card_title),
+            description = stringResource(R.string.feature_camera_card_desc)
         )
         FeatureItemCard(
             icon = Icons.Default.Share,
@@ -916,130 +811,8 @@ private fun PermissionRowItem(
     }
 }
 
-@Composable
-private fun AiModelOptionCard(
-    model: AiModelPreferenceManager.AiModel,
-    isSelected: Boolean,
-    isInstalled: Boolean,
-    isDefault: Boolean = false,
-    onSelect: () -> Unit,
-    testTag: String
-) {
-    val modelColor = when (model) {
-        AiModelPreferenceManager.AiModel.GEMINI -> Color(0xFFC084FC)
-        AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> Color(0xFF4285F4)
-        AiModelPreferenceManager.AiModel.CHATGPT -> Color(0xFF10A37F)
-        AiModelPreferenceManager.AiModel.CLAUDE -> Color(0xFFD97706)
-    }
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(testTag)
-            .clickable(onClick = onSelect),
-        shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) SlateSurfaceCard else SlateSurface,
-        border = BorderStroke(
-            1.5.dp,
-            if (isSelected) modelColor.copy(alpha = 0.8f) else SlateBorder
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(modelColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                when (model) {
-                    AiModelPreferenceManager.AiModel.GEMINI -> {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = modelColor,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    AiModelPreferenceManager.AiModel.GOOGLE_SEARCH -> {
-                        GoogleSearchIcon(modifier = Modifier.size(24.dp))
-                    }
-                    AiModelPreferenceManager.AiModel.CHATGPT -> {
-                        ChatGptIcon(tint = modelColor, modifier = Modifier.size(24.dp))
-                    }
-                    AiModelPreferenceManager.AiModel.CLAUDE -> {
-                        ClaudeIcon(tint = modelColor, modifier = Modifier.size(24.dp))
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = model.displayName,
-                        color = TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Status Badge
-                    val (badgeText, badgeBg, badgeTextColor) = when {
-                        isDefault -> Triple("Default", CyanPrimary.copy(alpha = 0.15f), CyanPrimary)
-                        isInstalled -> Triple("Installed", MintActive.copy(alpha = 0.15f), MintActive)
-                        else -> Triple("Not Installed", SlateBorder.copy(alpha = 0.4f), TextSecondary)
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = badgeBg
-                    ) {
-                        Text(
-                            text = badgeText,
-                            color = badgeTextColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(3.dp))
-
-                Text(
-                    text = model.description,
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            RadioButton(
-                selected = isSelected,
-                onClick = onSelect,
-                colors = RadioButtonDefaults.colors(
-                    selectedColor = modelColor,
-                    unselectedColor = TextSecondary.copy(alpha = 0.4f)
-                ),
-                modifier = Modifier.testTag("${testTag}_radio")
-            )
-        }
-    }
-}
-
 /**
- * Modern toggle card for enabling/disabling app features like Share to AI and Batch Select mode.
+ * Modern toggle card for enabling/disabling app features.
  */
 @Composable
 private fun ToggleOptionCard(

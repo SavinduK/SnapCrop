@@ -4,9 +4,9 @@
     <string name="accessibility_service_description">Enables the screen edge bar and instant button triggers to capture and crop your screen seamlessly.</string>
     
     <!-- Header & Status -->
-    <string name="hero_badge">Instant Screen Capture &amp; AI</string>
+    <string name="hero_badge">Instant Screen Capture &amp; Crop</string>
     <string name="hero_title">Snap, Crop &amp; Share</string>
-    <string name="hero_subtitle">Crop anything on your screen in seconds and send it straight to Gemini, copy to clipboard, save, or share with friends.</string>
+    <string name="hero_subtitle">Crop anything on your screen or camera in seconds, copy to clipboard, save, or search visually.</string>
     
     <string name="status_ready_title">SnapCrop is Ready</string>
     <string name="status_ready_desc">The side bar and 3-tap volume trigger are active on your screen.</string>
@@ -24,8 +24,8 @@
     <string name="section_what_you_can_do">What You Can Do</string>
     <string name="feature_ocr_title">Select Text (OCR)</string>
     <string name="feature_ocr_desc">Instantly recognize text from your screen selection, copy it, or search Google.</string>
-    <string name="feature_gemini_title">Ask Gemini AI</string>
-    <string name="feature_gemini_desc">Explain, summarize, translate, or solve anything you crop with one tap.</string>
+    <string name="feature_camera_card_title">Camera Capture &amp; Crop</string>
+    <string name="feature_camera_card_desc">Snap a photo from the overlay or Saved Clips, crop it precisely, copy, save, or search.</string>
     <string name="feature_share_title">Quick Share</string>
     <string name="feature_share_desc">Send your cropped image with an instant preview directly to any app.</string>
     <string name="feature_copy_save_title">Copy &amp; Save</string>
@@ -40,20 +40,6 @@
     <string name="step_battery_desc">Allows SnapCrop to stay responsive even when your phone is asleep.</string>
     <string name="btn_battery_optimization">Allow Background Use</string>
     
-    <!-- AI Model Section -->
-    <string name="section_ai_model">AI Model to Share</string>
-    <string name="ai_model_gemini_title">Google Gemini</string>
-    <string name="ai_model_gemini_desc">Default • Analyze screenshots with Gemini</string>
-    <string name="ai_model_google_search_title">Google Search</string>
-    <string name="ai_model_google_search_desc">Visual search, Lens &amp; identify anything on screen</string>
-    <string name="ai_model_chatgpt_title">ChatGPT</string>
-    <string name="ai_model_chatgpt_desc">Share screenshots directly to ChatGPT</string>
-    <string name="ai_model_claude_title">Claude</string>
-    <string name="ai_model_claude_desc">Share screenshots directly to Claude</string>
-    <string name="status_installed">Installed</string>
-    <string name="status_not_installed">Not Installed</string>
-    <string name="status_default">Default</string>
-    
     <string name="status_enabled">Active</string>
     <string name="status_disabled">Not Enabled</string>
     <string name="status_unrestricted">Allowed</string>
@@ -63,8 +49,8 @@
     <string name="crop_instruction_hint">Drag across the screen to select a region</string>
     <string name="crop_btn_select_full_screen">Select Whole Screen</string>
     <string name="crop_btn_select_text">Select Text</string>
-    <string name="crop_btn_gemini">Ask Gemini</string>
     <string name="crop_btn_google_search">Search with Google</string>
+    <string name="crop_btn_camera">Open Camera</string>
     <string name="crop_btn_share">Share</string>
     <string name="crop_btn_reset">Reset</string>
     <string name="crop_btn_close">Close</string>
@@ -91,8 +77,6 @@
     <string name="toast_no_text_detected">No text detected in selected region</string>
     <string name="toast_ocr_failed">Failed to recognize text</string>
     <string name="toast_saved_to_gallery">Saved to Gallery</string>
-    <string name="toast_sending_to_gemini">Opening in Gemini…</string>
-    <string name="toast_gemini_not_installed">Gemini app not found. Opening Play Store…</string>
     <string name="ocr_modal_title">Recognized Text</string>
     <string name="ocr_btn_copy_all">Copy</string>
     <string name="ocr_btn_google_search">Search</string>
@@ -104,8 +88,6 @@
     
     <!-- Crop Modes & Toggles -->
     <string name="section_crop_features">Crop Modes &amp; Actions</string>
-    <string name="feature_share_ai_title">Share to AI</string>
-    <string name="feature_share_ai_desc">Show Ask AI action in crop dock to send image to Gemini, Google Search, ChatGPT, or Claude</string>
     <string name="feature_batch_select_title">Batch Select Mode</string>
     <string name="feature_batch_select_desc">Collect multiple crops into temporary batch to share or save all at once</string>
 
@@ -132,27 +114,32 @@
     <string name="feature_long_screenshot_title">Long Screenshot</string>
     <string name="feature_long_screenshot_desc">Enable scroll capture in the crop overlay to capture full web pages and long articles</string>
 
-    <string name="feature_math_solver_title">Math Equation Solver</string>
-    <string name="feature_math_solver_desc">Identify math equations in selections, convert to LaTeX formula, and solve step-by-step</string>
-
     <string name="feature_long_card_title">Long Screenshot</string>
     <string name="feature_long_card_desc">Scroll and stitch full-page articles, long chats, or documents into one seamless image.</string>
 
     <string name="btn_test_standard_capture">Test Quick Crop</string>
     <string name="btn_test_long_capture">Test Long Screenshot</string>
 
-    <string name="crop_btn_math_solver">Solve Math</string>
-    <string name="math_solver_title">Math Solver</string>
-    <string name="math_solver_formula_label">Formula &amp; LaTeX</string>
-    <string name="math_solver_answer_label">Answer</string>
-    <string name="math_solver_steps_label">Steps</string>
-    <string name="math_solver_copy_answer">Copy Answer</string>
-    <string name="math_solver_copy_latex">Copy LaTeX</string>
-    <string name="math_solver_share">Share Solution</string>
-    <string name="math_solver_no_equation">No math equation or expression detected in this area</string>
-    <string name="math_solver_solving">Solving equation…</string>
-    <string name="math_solver_copied_answer">Answer copied to clipboard</string>
-    <string name="math_solver_copied_latex">LaTeX formula copied to clipboard</string>
+    <!-- Camera Capture & Crop Strings -->
+    <string name="camera_title_capture">Camera Capture</string>
+    <string name="camera_title_review">Crop &amp; Save</string>
+    <string name="camera_permission_title">Camera Permission Needed</string>
+    <string name="camera_permission_desc">Allow camera access to capture photos, crop them, save to Saved Clips or Gallery, copy, or search with Google.</string>
+    <string name="camera_btn_allow">Allow Camera</string>
+    <string name="camera_btn_open_settings">Open Settings</string>
+    <string name="camera_btn_shutter">Capture Photo</string>
+    <string name="camera_btn_switch_lens">Switch Camera</string>
+    <string name="camera_btn_flash">Toggle Flash</string>
+    <string name="camera_btn_retake">Retake</string>
+    <string name="camera_btn_apply_crop">Crop</string>
+    <string name="camera_btn_reset_crop">Reset</string>
+    <string name="camera_btn_save_clips">Saved Clips</string>
+    <string name="camera_btn_save_to_clips_primary">Save to Clips</string>
+    <string name="camera_btn_save_gallery">Gallery</string>
+    <string name="camera_btn_copy">Copy</string>
+    <string name="camera_btn_google_search">Google</string>
+    <string name="camera_crop_hint">Drag handles or draw on photo to crop</string>
+    <string name="toast_saved_to_clips">Saved to Saved Clips</string>
 
     <string name="crop_btn_long_screenshot">Scroll Capture</string>
     <string name="crop_btn_scroll_more">Capture More</string>

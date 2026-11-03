@@ -7,6 +7,8 @@ import android.graphics.BitmapFactory
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -58,6 +60,7 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
@@ -70,6 +73,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -83,6 +87,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +95,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.SlateBorder
 import com.example.ui.theme.SlateDarkBg
@@ -195,6 +202,7 @@ fun SavedImagesScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var items by remember { mutableStateOf<List<BatchCropManager.TemporaryScreenshotItem>>(emptyList()) }
     val selectedFiles = remember { mutableStateListOf<File>() }
     var previewFile by remember { mutableStateOf<File?>(null) }
@@ -202,6 +210,22 @@ fun SavedImagesScreen(
     fun refreshList() {
         items = BatchCropManager.getTemporaryItems(context)
         selectedFiles.retainAll(items.map { it.file })
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        refreshList()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshList()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(refreshTrigger) {
@@ -277,20 +301,49 @@ fun SavedImagesScreen(
                                 )
                             }
 
-                            IconButton(
-                                onClick = { refreshList() },
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x18FFFFFF))
-                                    .testTag("btn_refresh_saved_images")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Refresh",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(19.dp)
-                                )
+                                IconButton(
+                                    onClick = { refreshList() },
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0x18FFFFFF))
+                                        .testTag("btn_refresh_saved_images")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Refresh",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = {
+                                        cameraLauncher.launch(
+                                            CameraCaptureActivity.createIntent(
+                                                context,
+                                                CameraCaptureActivity.MODE_SAVED_CLIPS
+                                            )
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(CyanPrimary.copy(alpha = 0.22f))
+                                        .border(1.dp, CyanPrimary.copy(alpha = 0.55f), CircleShape)
+                                        .testTag("btn_camera_saved_images")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoCamera,
+                                        contentDescription = stringResource(R.string.crop_btn_camera),
+                                        tint = CyanPrimary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -953,6 +1006,12 @@ fun SavedStorageSection(
         selectedFiles.retainAll(items.map { it.file })
     }
 
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        refreshList()
+    }
+
     LaunchedEffect(refreshTrigger) {
         refreshList()
     }
@@ -1028,6 +1087,30 @@ fun SavedStorageSection(
                             fontSize = 12.sp
                         )
                     }
+                }
+
+                IconButton(
+                    onClick = {
+                        cameraLauncher.launch(
+                            CameraCaptureActivity.createIntent(
+                                context,
+                                CameraCaptureActivity.MODE_SAVED_CLIPS
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(CyanPrimary.copy(alpha = 0.22f))
+                        .border(1.dp, CyanPrimary.copy(alpha = 0.55f), CircleShape)
+                        .testTag("btn_camera_saved_section")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoCamera,
+                        contentDescription = stringResource(R.string.crop_btn_camera),
+                        tint = CyanPrimary,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
             }
 

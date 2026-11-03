@@ -72,11 +72,15 @@ object ScreenshotExportHelper {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
 
-            val contentUri: Uri = FileProvider.getUriForFile(
-                context,
-                "${context.applicationContext.packageName}.fileprovider",
-                file
-            )
+            val contentUri: Uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.applicationContext.packageName}.fileprovider",
+                    file
+                )
+            } catch (_: Exception) {
+                Uri.fromFile(file)
+            }
 
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
@@ -106,11 +110,15 @@ object ScreenshotExportHelper {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, outStream)
             }
 
-            val contentUri: Uri = FileProvider.getUriForFile(
-                context,
-                "${context.applicationContext.packageName}.fileprovider",
-                file
-            )
+            val contentUri: Uri = try {
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.applicationContext.packageName}.fileprovider",
+                    file
+                )
+            } catch (_: Exception) {
+                Uri.fromFile(file)
+            }
 
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newUri(context.contentResolver, "Long Screenshot", contentUri)
