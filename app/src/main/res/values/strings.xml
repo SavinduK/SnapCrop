@@ -139,6 +139,8 @@
     <string name="camera_btn_copy">Copy</string>
     <string name="camera_btn_google_search">Google</string>
     <string name="camera_crop_hint">Drag handles or draw on photo to crop</string>
+    <string name="camera_zoom_preset_cd">Zoom %1$s</string>
+    <string name="camera_zoom_slider_cd">Camera zoom bar, current zoom %1$s</string>
     <string name="toast_saved_to_clips">Saved to Saved Clips</string>
 
     <string name="crop_btn_long_screenshot">Scroll Capture</string>

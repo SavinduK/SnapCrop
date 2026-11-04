@@ -64,6 +64,8 @@
             android:name=".CameraCaptureActivity"
             android:exported="false"
             android:theme="@style/Theme.SnapCrop"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
             android:windowSoftInputMode="stateAlwaysHidden" />
 
         <service

@@ -4,11 +4,18 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.graphics.Bitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.example.ui.theme.MyApplicationTheme
@@ -187,13 +194,14 @@ class CameraAndCropFeatureTest {
         )
 
         val capturedBmp = Bitmap.createBitmap(160, 160, Bitmap.Config.ARGB_8888)
+        var closeCount = 0
 
         composeTestRule.setContent {
             MyApplicationTheme {
                 CameraCaptureScreen(
                     launchMode = CameraCaptureActivity.MODE_OVERLAY,
                     initialCapturedBitmap = capturedBmp,
-                    onClose = {},
+                    onClose = { closeCount++ },
                     onSavedClipComplete = {}
                 )
             }
@@ -205,9 +213,118 @@ class CameraAndCropFeatureTest {
         composeTestRule.onNodeWithTag("btn_camera_copy").assertIsDisplayed()
         composeTestRule.onNodeWithTag("btn_camera_google_search").assertIsDisplayed()
 
-        // Clicking Save to Saved Clips stores the image in BatchCropManager
+        // Clicking every action button in Overlay camera menu closes the screen
         composeTestRule.onNodeWithTag("btn_camera_save_clips").performClick()
         composeTestRule.waitForIdle()
         assertEquals(1, BatchCropManager.getBatchCount(context))
+        assertEquals(1, closeCount)
+
+        composeTestRule.onNodeWithTag("btn_camera_copy").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(2, closeCount)
+
+        composeTestRule.onNodeWithTag("btn_camera_save_gallery").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(3, closeCount)
+
+        composeTestRule.onNodeWithTag("btn_camera_google_search").performClick()
+        composeTestRule.waitForIdle()
+        assertEquals(4, closeCount)
+    }
+
+    @Test
+    fun `clicking Copy in Overlay CameraCaptureActivity finishes the activity`() {
+        CameraCaptureActivity.testInitialCapturedBitmap =
+            Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888)
+        val intent = CameraCaptureActivity.createIntent(context, CameraCaptureActivity.MODE_OVERLAY)
+
+        ActivityScenario.launch<CameraCaptureActivity>(intent).use { scenario ->
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("btn_camera_copy").assertIsDisplayed().performClick()
+            composeTestRule.waitForIdle()
+
+            scenario.onActivity { activity ->
+                assertTrue(
+                    "Expected CameraCaptureActivity to finish after clicking Copy",
+                    activity.isFinishing
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `clicking Save in Saved Clips CameraCaptureActivity finishes the activity`() {
+        CameraCaptureActivity.testInitialCapturedBitmap =
+            Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888)
+        val intent = CameraCaptureActivity.createIntent(context, CameraCaptureActivity.MODE_SAVED_CLIPS)
+
+        ActivityScenario.launch<CameraCaptureActivity>(intent).use { scenario ->
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("btn_camera_save_to_clips").assertIsDisplayed().performClick()
+            composeTestRule.waitForIdle()
+
+            scenario.onActivity { activity ->
+                assertTrue(
+                    "Expected CameraCaptureActivity to finish after saving to Saved Clips",
+                    activity.isFinishing
+                )
+            }
+            assertEquals(1, BatchCropManager.getBatchCount(context))
+        }
+    }
+
+    @Test
+    fun `samsung camera zoom bar supports preset buttons and tick-mark scrubber slider`() {
+        var currentZoom by mutableFloatStateOf(1.0f)
+        var expanded by mutableStateOf(false)
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                SamsungCameraZoomBar(
+                    zoomRatio = currentZoom,
+                    minZoom = 1.0f,
+                    maxZoom = 8.0f,
+                    isExpanded = expanded,
+                    onExpandedChange = { expanded = it },
+                    onDraggingChange = {},
+                    onZoomChange = { currentZoom = it },
+                    onInteractionTick = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("camera_zoom_bar").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_camera_zoom_1x").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_camera_zoom_2x").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_camera_zoom_4x").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_camera_zoom_8x").assertIsDisplayed()
+
+        // Tap 2x preset -> updates zoom to 2.0f and expands the Samsung tick-mark ruler
+        composeTestRule.onNodeWithTag("btn_camera_zoom_2x").performClick()
+        composeTestRule.waitForIdle()
+
+        assertEquals(2.0f, currentZoom, 0.05f)
+        assertTrue("Expected Samsung tick-mark ruler to expand on preset selection", expanded)
+        composeTestRule.onNodeWithTag("camera_zoom_slider").assertIsDisplayed()
+
+        // Scrub right across the expanded tick-mark ruler -> increases zoom past 2.0x
+        composeTestRule.onNodeWithTag("camera_zoom_slider").performTouchInput {
+            swipeRight(startX = width * 0.35f, endX = width * 0.85f)
+        }
+        composeTestRule.waitForIdle()
+
+        assertTrue(
+            "Expected scrubbing right on zoom slider to increase zoom above 2.0x, got $currentZoom",
+            currentZoom > 2.5f
+        )
+
+        // Tap near the far right of the ruler -> jumps close to max zoom
+        composeTestRule.onNodeWithTag("camera_zoom_slider").performTouchInput {
+            down(Offset(width * 0.96f, centerY))
+            up()
+        }
+        composeTestRule.waitForIdle()
+        assertTrue("Expected tapping near right end of zoom ruler to approach 8x, got $currentZoom", currentZoom >= 6.5f)
     }
 }

@@ -19,11 +19,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
@@ -33,6 +35,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +79,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,8 +87,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
@@ -100,6 +107,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Observer
 import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.SlateBorder
@@ -107,6 +115,10 @@ import com.example.ui.theme.SlateDarkBg
 import com.example.ui.theme.SlateSurfaceCard
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Full-screen Camera Capture & Interactive Crop Activity.
@@ -159,9 +171,18 @@ class CameraCaptureActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        KeyCaptureService.setOverlayVisible(false)
+    }
+
     override fun finish() {
         KeyCaptureService.setOverlayVisible(true)
-        super.finish()
+        if (intent?.getStringExtra(EXTRA_LAUNCH_MODE) == MODE_OVERLAY && isTaskRoot) {
+            super.finishAndRemoveTask()
+        } else {
+            super.finish()
+        }
     }
 
     override fun onDestroy() {
@@ -291,6 +312,57 @@ private fun LiveCameraViewfinder(
     var isCapturing by remember { mutableStateOf(false) }
     var canSwitchCamera by remember { mutableStateOf(false) }
 
+    var boundCamera by remember { mutableStateOf<Camera?>(null) }
+    var hardwareMinZoom by remember { mutableFloatStateOf(1.0f) }
+    var hardwareMaxZoom by remember { mutableFloatStateOf(1.0f) }
+    var zoomRatio by remember { mutableFloatStateOf(1.0f) }
+    var isZoomBarExpanded by remember { mutableStateOf(false) }
+    var isDraggingZoom by remember { mutableStateOf(false) }
+    var zoomInteractionEpoch by remember { mutableIntStateOf(0) }
+
+    val minZoom = hardwareMinZoom.coerceIn(0.4f, 1.0f)
+    val maxZoom = max(hardwareMaxZoom, 8.0f).coerceAtMost(20.0f)
+
+    fun applyZoom(targetZoom: Float) {
+        val clamped = ((targetZoom.coerceIn(minZoom, maxZoom) * 10f).roundToInt() / 10f)
+            .coerceIn(minZoom, maxZoom)
+        zoomRatio = clamped
+        val hwMax = hardwareMaxZoom.coerceAtLeast(hardwareMinZoom)
+        boundCamera?.cameraControl?.setZoomRatio(clamped.coerceIn(hardwareMinZoom, hwMax))
+    }
+
+    DisposableEffect(boundCamera, lifecycleOwner) {
+        val cam = boundCamera
+        val liveData = cam?.cameraInfo?.zoomState
+        val observer = Observer<ZoomState> { state ->
+            if (state != null) {
+                hardwareMinZoom = state.minZoomRatio
+                hardwareMaxZoom = state.maxZoomRatio
+            }
+        }
+        liveData?.observe(lifecycleOwner, observer)
+        onDispose {
+            liveData?.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(isZoomBarExpanded, isDraggingZoom, zoomInteractionEpoch) {
+        if (isZoomBarExpanded && !isDraggingZoom) {
+            delay(2600L)
+            isZoomBarExpanded = false
+        }
+    }
+
+    val appliedHardwareZoom = zoomRatio.coerceIn(
+        hardwareMinZoom,
+        hardwareMaxZoom.coerceAtLeast(hardwareMinZoom)
+    )
+    val extraDigitalZoom = if (appliedHardwareZoom > 0f) {
+        (zoomRatio / appliedHardwareZoom).coerceAtLeast(1.0f)
+    } else {
+        1.0f
+    }
+
     val previewView = remember {
         PreviewView(context).apply {
             layoutParams = ViewGroup.LayoutParams(
@@ -340,12 +412,25 @@ private fun LiveCameraViewfinder(
                 }
 
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
+                val camera = cameraProvider.bindToLifecycle(
                     lifecycleOwner,
                     resolvedSelector,
                     preview,
                     imageCapture
                 )
+                boundCamera = camera
+                val initialZoomState = camera.cameraInfo.zoomState.value
+                if (initialZoomState != null) {
+                    hardwareMinZoom = initialZoomState.minZoomRatio
+                    hardwareMaxZoom = initialZoomState.maxZoomRatio
+                }
+                val targetHwMax = hardwareMaxZoom.coerceAtLeast(hardwareMinZoom)
+                val safeZoom = zoomRatio.coerceIn(
+                    hardwareMinZoom.coerceIn(0.4f, 1.0f),
+                    max(hardwareMaxZoom, 8.0f).coerceAtMost(20.0f)
+                )
+                zoomRatio = safeZoom
+                camera.cameraControl.setZoomRatio(safeZoom.coerceIn(hardwareMinZoom, targetHwMax))
             } catch (e: Exception) {
                 Log.e("CameraCapture", "Failed to bind CameraX use cases", e)
                 Toast.makeText(context, "Unable to initialize camera", Toast.LENGTH_SHORT).show()
@@ -359,12 +444,31 @@ private fun LiveCameraViewfinder(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .pointerInput(minZoom, maxZoom) {
+                detectTransformGestures { _, _, zoomChange, _ ->
+                    if (abs(zoomChange - 1f) > 0.01f) {
+                        isZoomBarExpanded = true
+                        zoomInteractionEpoch++
+                        applyZoom(zoomRatio * zoomChange)
+                    }
+                }
+            }
             .testTag("camera_viewfinder_screen")
     ) {
-        AndroidView(
-            factory = { previewView },
-            modifier = Modifier.fillMaxSize()
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clipToBounds()
+                .graphicsLayer(
+                    scaleX = extraDigitalZoom,
+                    scaleY = extraDigitalZoom
+                )
+        ) {
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         // Top Bar Controls
         Row(
@@ -446,6 +550,8 @@ private fun LiveCameraViewfinder(
                 if (canSwitchCamera) {
                     IconButton(
                         onClick = {
+                            zoomRatio = 1.0f
+                            isZoomBarExpanded = false
                             lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
                                 CameraSelector.LENS_FACING_FRONT
                             } else {
@@ -470,15 +576,37 @@ private fun LiveCameraViewfinder(
             }
         }
 
-        // Bottom Shutter Controls
-        Box(
+        // Bottom Samsung Zoom Bar + Shutter Controls
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                .padding(bottom = 28.dp, top = 16.dp),
-            contentAlignment = Alignment.Center
+                .padding(bottom = 28.dp, top = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            SamsungCameraZoomBar(
+                zoomRatio = zoomRatio,
+                minZoom = minZoom,
+                maxZoom = maxZoom,
+                isExpanded = isZoomBarExpanded,
+                onExpandedChange = { expanded ->
+                    isZoomBarExpanded = expanded
+                    zoomInteractionEpoch++
+                },
+                onDraggingChange = { dragging ->
+                    isDraggingZoom = dragging
+                    zoomInteractionEpoch++
+                },
+                onZoomChange = { updatedZoom ->
+                    applyZoom(updatedZoom)
+                },
+                onInteractionTick = {
+                    zoomInteractionEpoch++
+                }
+            )
+
             Box(
                 modifier = Modifier
                     .size(78.dp)
@@ -486,6 +614,7 @@ private fun LiveCameraViewfinder(
                     .border(4.dp, Color.White, CircleShape)
                     .clickable(enabled = !isCapturing) {
                         isCapturing = true
+                        val captureExtraZoom = extraDigitalZoom
                         imageCapture.takePicture(
                             ContextCompat.getMainExecutor(context),
                             object : ImageCapture.OnImageCapturedCallback() {
@@ -493,7 +622,8 @@ private fun LiveCameraViewfinder(
                                     try {
                                         val bitmap = decodeImageProxyToBitmap(
                                             image = image,
-                                            mirrorHorizontally = lensFacing == CameraSelector.LENS_FACING_FRONT
+                                            mirrorHorizontally = lensFacing == CameraSelector.LENS_FACING_FRONT,
+                                            extraDigitalZoom = captureExtraZoom
                                         )
                                         isCapturing = false
                                         onPhotoCaptured(bitmap)
@@ -548,34 +678,66 @@ private fun LiveCameraViewfinder(
 
 private fun decodeImageProxyToBitmap(
     image: ImageProxy,
-    mirrorHorizontally: Boolean
+    mirrorHorizontally: Boolean,
+    extraDigitalZoom: Float = 1.0f
 ): Bitmap {
     val rawBitmap = image.toBitmap()
+    val crop = image.cropRect
+    val sensorCropped = if (
+        crop.width() > 0 &&
+        crop.height() > 0 &&
+        (crop.width() < rawBitmap.width || crop.height() < rawBitmap.height)
+    ) {
+        val left = crop.left.coerceIn(0, rawBitmap.width - 1)
+        val top = crop.top.coerceIn(0, rawBitmap.height - 1)
+        val width = crop.width().coerceIn(1, rawBitmap.width - left)
+        val height = crop.height().coerceIn(1, rawBitmap.height - top)
+        val sub = Bitmap.createBitmap(rawBitmap, left, top, width, height)
+        if (sub !== rawBitmap) rawBitmap.recycle()
+        sub
+    } else {
+        rawBitmap
+    }
+
     val rotation = image.imageInfo.rotationDegrees
-    if (rotation == 0 && !mirrorHorizontally) {
-        return rawBitmap
-    }
-    val matrix = Matrix().apply {
-        if (rotation != 0) {
-            postRotate(rotation.toFloat())
+    val rotated = if (rotation == 0 && !mirrorHorizontally) {
+        sensorCropped
+    } else {
+        val matrix = Matrix().apply {
+            if (rotation != 0) {
+                postRotate(rotation.toFloat())
+            }
+            if (mirrorHorizontally) {
+                postScale(-1f, 1f)
+            }
         }
-        if (mirrorHorizontally) {
-            postScale(-1f, 1f)
+        val transformed = Bitmap.createBitmap(
+            sensorCropped,
+            0,
+            0,
+            sensorCropped.width,
+            sensorCropped.height,
+            matrix,
+            true
+        )
+        if (transformed !== sensorCropped) {
+            sensorCropped.recycle()
         }
+        transformed
     }
-    val transformed = Bitmap.createBitmap(
-        rawBitmap,
-        0,
-        0,
-        rawBitmap.width,
-        rawBitmap.height,
-        matrix,
-        true
-    )
-    if (transformed !== rawBitmap) {
-        rawBitmap.recycle()
+
+    if (extraDigitalZoom <= 1.02f) {
+        return rotated
     }
-    return transformed
+    val zoomedW = (rotated.width / extraDigitalZoom).roundToInt().coerceIn(1, rotated.width)
+    val zoomedH = (rotated.height / extraDigitalZoom).roundToInt().coerceIn(1, rotated.height)
+    val startX = ((rotated.width - zoomedW) / 2).coerceAtLeast(0)
+    val startY = ((rotated.height - zoomedH) / 2).coerceAtLeast(0)
+    val centerZoomed = Bitmap.createBitmap(rotated, startX, startY, zoomedW, zoomedH)
+    if (centerZoomed !== rotated) {
+        rotated.recycle()
+    }
+    return centerZoomed
 }
 
 @Composable
@@ -794,7 +956,6 @@ private fun CapturedPhotoReviewScreen(
                                     context.getString(R.string.toast_saved_to_clips),
                                     Toast.LENGTH_SHORT
                                 ).show()
-                                onSavedClipComplete()
                             } else {
                                 Toast.makeText(
                                     context,
@@ -802,6 +963,7 @@ private fun CapturedPhotoReviewScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
+                            onSavedClipComplete()
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = CyanPrimary,
@@ -828,6 +990,7 @@ private fun CapturedPhotoReviewScreen(
                 }
             } else {
                 // Overlay camera workflow: crop, save to Saved Clips or Device Gallery, copy, or Google Search
+                // Clicking any action button executes the action and closes the camera screen immediately (just like the overlay).
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -858,6 +1021,7 @@ private fun CapturedPhotoReviewScreen(
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
+                            onClose()
                         }
                     )
 
@@ -870,6 +1034,7 @@ private fun CapturedPhotoReviewScreen(
                         onClick = {
                             val finalBmp = resolveFinalBitmap()
                             ScreenshotExportHelper.saveToGallery(context, finalBmp)
+                            onClose()
                         }
                     )
 
@@ -882,6 +1047,7 @@ private fun CapturedPhotoReviewScreen(
                         onClick = {
                             val finalBmp = resolveFinalBitmap()
                             ScreenshotExportHelper.copyToClipboard(context, finalBmp)
+                            onClose()
                         }
                     )
 
@@ -893,12 +1059,16 @@ private fun CapturedPhotoReviewScreen(
                             testTag = "btn_camera_google_search",
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val finalBmp = resolveFinalBitmap()
-                                GoogleImageSearchHelper.searchWithImage(
-                                    context = context,
-                                    bitmap = finalBmp,
-                                    openPlayStoreIfMissing = false
-                                )
+                                try {
+                                    val finalBmp = resolveFinalBitmap()
+                                    GoogleImageSearchHelper.searchWithImage(
+                                        context = context,
+                                        bitmap = finalBmp,
+                                        openPlayStoreIfMissing = false
+                                    )
+                                } finally {
+                                    onClose()
+                                }
                             }
                         )
                     }
