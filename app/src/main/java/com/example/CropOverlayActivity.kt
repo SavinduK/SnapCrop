@@ -961,36 +961,37 @@ class CropOverlayActivity : ComponentActivity() {
  * floating Material3 dock with Select Text (OCR), Edit, Copy to Clipboard, Share, and Save buttons.
  */
 @Composable
-private fun CropOverlayContent(
+internal fun CropOverlayContent(
     screenshot: Bitmap?,
-    onViewAttached: (SelectionView) -> Unit,
-    onExtractBitmap: (RectF) -> Bitmap?,
+    initialSelectionRect: RectF? = null,
+    onViewAttached: (SelectionView) -> Unit = {},
+    onExtractBitmap: (RectF) -> Bitmap? = { null },
     onOcrRequested: (
         rect: RectF,
         onSuccess: (CropOverlayActivity.OcrRecognitionResult) -> Unit,
         onError: (Exception) -> Unit,
         onEmpty: () -> Unit
-    ) -> Unit,
-    onShareRequested: (RectF, Bitmap?) -> Unit,
-    onCopyRequested: (RectF, Bitmap?) -> Unit,
-    onSaveRequested: (RectF, Bitmap?) -> Unit,
-    onSaveToAppStorageRequested: (RectF, Bitmap?) -> Unit,
-    onAddToBatchRequested: (RectF) -> Unit,
-    onShareBatchRequested: (RectF?) -> Unit,
-    onSaveBatchRequested: (RectF?) -> Unit,
-    onClearBatchRequested: () -> Unit,
-    onCancelRequested: () -> Unit,
-    onSearchGoogle: (String) -> Unit,
-    onCopyText: (String) -> Unit,
-    onShareText: (String) -> Unit,
-    onExtendLongScreenshotRequested: () -> Unit,
-    onSaveFullScreenshot: (Bitmap) -> Unit,
-    onShareFullScreenshot: (Bitmap) -> Unit,
-    onCopyFullScreenshot: (Bitmap) -> Unit,
-    onSearchGoogleImage: (Bitmap) -> Unit
+    ) -> Unit = { _, _, _, _ -> },
+    onShareRequested: (RectF, Bitmap?) -> Unit = { _, _ -> },
+    onCopyRequested: (RectF, Bitmap?) -> Unit = { _, _ -> },
+    onSaveRequested: (RectF, Bitmap?) -> Unit = { _, _ -> },
+    onSaveToAppStorageRequested: (RectF, Bitmap?) -> Unit = { _, _ -> },
+    onAddToBatchRequested: (RectF) -> Unit = {},
+    onShareBatchRequested: (RectF?) -> Unit = {},
+    onSaveBatchRequested: (RectF?) -> Unit = {},
+    onClearBatchRequested: () -> Unit = {},
+    onCancelRequested: () -> Unit = {},
+    onSearchGoogle: (String) -> Unit = {},
+    onCopyText: (String) -> Unit = {},
+    onShareText: (String) -> Unit = {},
+    onExtendLongScreenshotRequested: () -> Unit = {},
+    onSaveFullScreenshot: (Bitmap) -> Unit = {},
+    onShareFullScreenshot: (Bitmap) -> Unit = {},
+    onCopyFullScreenshot: (Bitmap) -> Unit = {},
+    onSearchGoogleImage: (Bitmap) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var selectionRect by remember { mutableStateOf<RectF?>(null) }
+    var selectionRect by remember { mutableStateOf<RectF?>(initialSelectionRect) }
     var isInteracting by remember { mutableStateOf(false) }
     var activeSelectionView by remember { mutableStateOf<SelectionView?>(null) }
 
@@ -1060,6 +1061,9 @@ private fun CropOverlayContent(
                 factory = { ctx ->
                     SelectionView(ctx).apply {
                         screenshotBitmap = screenshot
+                        if (initialSelectionRect != null) {
+                            setSelection(initialSelectionRect)
+                        }
                         onSelectionChanged = { rect, interacting ->
                             selectionRect = rect?.let { RectF(it) }
                             isInteracting = interacting
@@ -1222,33 +1226,6 @@ private fun CropOverlayContent(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-
-                    // Google Search (Magnifying Lens) Icon - visible whenever a section of the screen is selected
-                    if (hasValidSelection && currentRect != null) {
-                        IconButton(
-                            onClick = {
-                                val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
-                                if (bmp != null) {
-                                    onSearchGoogleImage(bmp)
-                                } else {
-                                    Toast.makeText(context, "Selection unavailable", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xD90F172A))
-                                .border(1.dp, Color(0x33FFFFFF), CircleShape)
-                                .testTag("btn_search_image_top")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = stringResource(R.string.crop_btn_google_search),
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
                 }
 
                 // Right Side Control: Close Button (X)
@@ -1272,7 +1249,103 @@ private fun CropOverlayContent(
             }
         }
 
-        // 3. Floating Action Dock (Select Text, Edit, Copy, Share, Save) OR Circle to Search OCR Action Dock
+        // 2b. Floating Text Action Pill above the selected box (top right) with small label
+        if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog && !isOcrActive) {
+            val marginPx = with(density) { 14.dp.toPx() }
+            val topSafePx = with(density) { 68.dp.toPx() }
+            val bottomSafePx = with(density) { 56.dp.toPx() }
+            val textPillHeightPx = with(density) { 36.dp.toPx() }
+            val textPillWidthEstimatePx = with(density) { 78.dp.toPx() }
+            val textGapPx = with(density) { 12.dp.toPx() }
+
+            // Align right with the right edge of the selected box, clamped inside screen bounds
+            val textTargetX = (currentRect.right - textPillWidthEstimatePx).coerceIn(
+                marginPx,
+                max(marginPx, screenW - textPillWidthEstimatePx - marginPx)
+            )
+
+            // Place above the box top edge; if too close to the screen top, place inside the box near the top-right
+            val textTargetY = if (currentRect.top - textPillHeightPx - textGapPx >= topSafePx) {
+                currentRect.top - textPillHeightPx - textGapPx
+            } else {
+                (currentRect.top + textGapPx).coerceAtMost(screenH - textPillHeightPx - bottomSafePx)
+            }
+
+            AnimatedVisibility(
+                visible = !isInteracting,
+                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f),
+                exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.92f),
+                modifier = Modifier
+                    .zIndex(10f)
+                    .offset { IntOffset(textTargetX.roundToInt(), textTargetY.roundToInt()) }
+            ) {
+                Surface(
+                    onClick = {
+                        isOcrProcessing = true
+                        onOcrRequested(
+                            currentRect,
+                            { result ->
+                                isOcrProcessing = false
+                                ocrResultText = result.fullText
+                                ocrBlocks = result.blocks
+                                ocrElements = result.elements
+                                isOcrActive = true
+                                isCopiedNotification = false
+                                activeSelectionView?.isOcrMode = true
+                            },
+                            { ex ->
+                                isOcrProcessing = false
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_ocr_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            {
+                                isOcrProcessing = false
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.toast_no_text_detected),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    },
+                    shape = RoundedCornerShape(percent = 50),
+                    color = Color(0xF20F172A),
+                    border = BorderStroke(1.2.dp, Color(0x4DFFFFFF)),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.testTag("btn_select_text_crop")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        if (isOcrProcessing) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        } else {
+                            SelectTextIcon(
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.crop_btn_text_label),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+
+        // 3. Floating Action Dock (Search, Edit, Copy, Share, Save) OR Circle to Search OCR Action Dock
         // Positioned contextually below (or above) the bounding box
         if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog) {
             val marginPx = with(density) { 14.dp.toPx() }
@@ -1309,6 +1382,7 @@ private fun CropOverlayContent(
                 enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f),
                 exit = fadeOut(tween(120)) + scaleOut(targetScale = 0.92f),
                 modifier = Modifier
+                    .zIndex(10f)
                     .offset { IntOffset(targetX.roundToInt(), targetY.roundToInt()) }
             ) {
                 Column(
@@ -1369,43 +1443,25 @@ private fun CropOverlayContent(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                // 1. Select Text (OCR) Button -> enters Circle to Search mode
+                                // 1. Search Button (Google Search with Image) - Left Icon
                                 CropActionCircleButton(
                                     onClick = {
-                                        isOcrProcessing = true
-                                        onOcrRequested(
-                                            currentRect,
-                                            { result ->
-                                                isOcrProcessing = false
-                                                ocrResultText = result.fullText
-                                                ocrBlocks = result.blocks
-                                                ocrElements = result.elements
-                                                isOcrActive = true
-                                                isCopiedNotification = false
-                                                activeSelectionView?.isOcrMode = true
-                                            },
-                                            { ex ->
-                                                isOcrProcessing = false
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.toast_ocr_failed),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            },
-                                            {
-                                                isOcrProcessing = false
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.toast_no_text_detected),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        )
+                                        val bmp = editedCropBitmap ?: onExtractBitmap(currentRect)
+                                        if (bmp != null) {
+                                            onSearchGoogleImage(bmp)
+                                        } else {
+                                            Toast.makeText(context, "Selection unavailable", Toast.LENGTH_SHORT).show()
+                                        }
                                     },
-                                    contentDescription = stringResource(R.string.crop_btn_select_text),
-                                    testTag = "btn_select_text_crop"
+                                    contentDescription = stringResource(R.string.crop_btn_google_search),
+                                    testTag = "btn_search_crop"
                                 ) {
-                                    SelectTextIcon(tint = Color.White)
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = stringResource(R.string.crop_btn_google_search),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
                                 }
 
                             // 2. Edit Button (Image Editing Window)

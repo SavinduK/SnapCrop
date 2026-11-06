@@ -49,6 +49,7 @@
     <string name="crop_instruction_hint">Drag across the screen to select a region</string>
     <string name="crop_btn_select_full_screen">Select Whole Screen</string>
     <string name="crop_btn_select_text">Select Text</string>
+    <string name="crop_btn_text_label">Text</string>
     <string name="crop_btn_google_search">Search with Google</string>
     <string name="crop_btn_camera">Open Camera</string>
     <string name="crop_btn_share">Share</string>

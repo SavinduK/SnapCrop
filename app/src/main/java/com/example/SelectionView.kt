@@ -158,15 +158,36 @@ open class SelectionView @JvmOverloads constructor(
     fun setSelection(rect: RectF) {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
-        val left = rect.left.coerceIn(0f, viewW)
-        val top = rect.top.coerceIn(0f, viewH)
-        val right = rect.right.coerceIn(left, viewW)
-        val bottom = rect.bottom.coerceIn(top, viewH)
+        if (viewW > 0f && viewH > 0f) {
+            val left = rect.left.coerceIn(0f, viewW)
+            val top = rect.top.coerceIn(0f, viewH)
+            val right = rect.right.coerceIn(left, viewW)
+            val bottom = rect.bottom.coerceIn(top, viewH)
 
-        selectionRect.set(left, top, right, bottom)
-        hasSelection = (right - left >= minBoxSize && bottom - top >= minBoxSize)
-        invalidate()
-        onSelectionChanged?.invoke(if (hasSelection) selectionRect else null, false)
+            selectionRect.set(left, top, right, bottom)
+            hasSelection = (right - left >= minBoxSize && bottom - top >= minBoxSize)
+            invalidate()
+            onSelectionChanged?.invoke(if (hasSelection) selectionRect else null, false)
+        } else {
+            selectionRect.set(rect)
+            hasSelection = (rect.width() >= minBoxSize && rect.height() >= minBoxSize)
+            invalidate()
+            post {
+                val postW = width.toFloat()
+                val postH = height.toFloat()
+                if (postW > 0f && postH > 0f) {
+                    val left = selectionRect.left.coerceIn(0f, postW)
+                    val top = selectionRect.top.coerceIn(0f, postH)
+                    val right = selectionRect.right.coerceIn(left, postW)
+                    val bottom = selectionRect.bottom.coerceIn(top, postH)
+                    selectionRect.set(left, top, right, bottom)
+                    hasSelection = (right - left >= minBoxSize && bottom - top >= minBoxSize)
+                    invalidate()
+                    onSelectionChanged?.invoke(if (hasSelection) selectionRect else null, false)
+                }
+            }
+            onSelectionChanged?.invoke(if (hasSelection) selectionRect else null, false)
+        }
     }
 
     /**
