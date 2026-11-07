@@ -165,6 +165,10 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
         mutableStateOf(CropFeaturePreferenceManager.isLongScreenshotEnabled(context))
     }
 
+    var isTextRecognitionEnabled by remember {
+        mutableStateOf(CropFeaturePreferenceManager.isTextRecognitionEnabled(context))
+    }
+
     var currentDestination by remember {
         mutableStateOf(if (navigateTo == MainActivity.SECTION_SAVED) MainScreenDestination.SAVED_IMAGES else MainScreenDestination.HOME)
     }
@@ -184,6 +188,7 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                 currentTriggerMode = TriggerPreferenceManager.getTriggerMode(context)
                 isBatchSelectEnabled = CropFeaturePreferenceManager.isBatchSelectEnabled(context)
                 isLongScreenshotEnabled = CropFeaturePreferenceManager.isLongScreenshotEnabled(context)
+                isTextRecognitionEnabled = CropFeaturePreferenceManager.isTextRecognitionEnabled(context)
                 storageRefreshTrigger = System.currentTimeMillis()
                 if (isAccessibilityEnabled) {
                     KeyCaptureService.setOverlayVisible(true)
@@ -292,6 +297,22 @@ fun SnapCropMainScreen(navigateTo: String? = null) {
                     CropFeaturePreferenceManager.setLongScreenshotEnabled(context, enabled)
                 },
                 testTag = "toggle_long_screenshot"
+            )
+
+            // Toggle: Text Recognition (OCR) (Default: ON)
+            ToggleOptionCard(
+                title = stringResource(R.string.feature_ocr_toggle_title),
+                description = stringResource(R.string.feature_ocr_toggle_desc),
+                customIcon = { tint ->
+                    SelectTextIcon(tint = tint, modifier = Modifier.size(22.dp))
+                },
+                iconTint = Color(0xFF60A5FA),
+                isChecked = isTextRecognitionEnabled,
+                onCheckedChange = { enabled ->
+                    isTextRecognitionEnabled = enabled
+                    CropFeaturePreferenceManager.setTextRecognitionEnabled(context, enabled)
+                },
+                testTag = "toggle_text_recognition"
             )
 
             // Section: What You Can Do

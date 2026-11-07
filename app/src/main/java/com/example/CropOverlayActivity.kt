@@ -964,6 +964,7 @@ class CropOverlayActivity : ComponentActivity() {
 internal fun CropOverlayContent(
     screenshot: Bitmap?,
     initialSelectionRect: RectF? = null,
+    isTextRecognitionEnabled: Boolean? = null,
     onViewAttached: (SelectionView) -> Unit = {},
     onExtractBitmap: (RectF) -> Bitmap? = { null },
     onOcrRequested: (
@@ -1008,6 +1009,7 @@ internal fun CropOverlayContent(
     // Feature Toggles from preferences
     val isBatchModeEnabled = remember { CropFeaturePreferenceManager.isBatchSelectEnabled(context) }
     val isLongScreenshotEnabled = remember { CropFeaturePreferenceManager.isLongScreenshotEnabled(context) }
+    val isTextRecognitionConfigured = isTextRecognitionEnabled ?: remember { CropFeaturePreferenceManager.isTextRecognitionEnabled(context) }
 
     // Long Screenshot State
     var showFullSizeViewer by remember { mutableStateOf(false) }
@@ -1250,7 +1252,7 @@ internal fun CropOverlayContent(
         }
 
         // 2b. Floating Text Action Pill above the selected box (top right) with small label
-        if (hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog && !isOcrActive) {
+        if (isTextRecognitionConfigured && hasValidSelection && currentRect != null && !showFullTextSheet && !isSimulatingScrollCapture && !showTopPillOnly && !showEditDialog && !isOcrActive) {
             val marginPx = with(density) { 14.dp.toPx() }
             val topSafePx = with(density) { 68.dp.toPx() }
             val bottomSafePx = with(density) { 56.dp.toPx() }
@@ -2687,7 +2689,7 @@ private fun OcrResultSheet(
  * Four bounding corner brackets with a centered uppercase 'T'.
  */
 @Composable
-private fun SelectTextIcon(
+internal fun SelectTextIcon(
     modifier: Modifier = Modifier.size(22.dp),
     tint: Color = Color.White
 ) {

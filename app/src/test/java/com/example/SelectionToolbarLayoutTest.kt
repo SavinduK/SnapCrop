@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -122,5 +123,64 @@ class SelectionToolbarLayoutTest {
         textPillNode.performClick()
         composeTestRule.waitForIdle()
         assertTrue("Expected onOcrRequested to be invoked on clicking text pill", ocrRequested)
+    }
+
+    @Test
+    fun `text recognition option can be toggled off and on via preference and CropOverlayContent respects it`() {
+        val sampleBitmap = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888)
+        val testBox = RectF(60f, 150f, 260f, 350f)
+
+        // 1. By default, preference is enabled
+        CropFeaturePreferenceManager.setTextRecognitionEnabled(context, true)
+        assertTrue(CropFeaturePreferenceManager.isTextRecognitionEnabled(context))
+
+        // 2. Set OCR disabled in preference and verify pill is hidden
+        CropFeaturePreferenceManager.setTextRecognitionEnabled(context, false)
+        org.junit.Assert.assertFalse(CropFeaturePreferenceManager.isTextRecognitionEnabled(context))
+
+        composeTestRule.setContent {
+            MaterialTheme {
+                CropOverlayContent(
+                    screenshot = sampleBitmap,
+                    initialSelectionRect = testBox,
+                    onExtractBitmap = { sampleBitmap }
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        // btn_select_text_crop should not exist when OCR is disabled
+        composeTestRule.onNodeWithTag("btn_select_text_crop").assertDoesNotExist()
+
+        // floating_action_toolbar (select bar) should still be displayed
+        composeTestRule.onNodeWithTag("floating_action_toolbar").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_search_crop").assertIsDisplayed()
+    }
+
+    @Test
+    fun `main activity displays text recognition toggle option and clicking updates preference`() {
+        CropFeaturePreferenceManager.setTextRecognitionEnabled(context, true)
+
+        composeTestRule.setContent {
+            MaterialTheme {
+                SnapCropMainScreen()
+            }
+        }
+        composeTestRule.waitForIdle()
+
+        val toggleNode = composeTestRule.onNodeWithTag("toggle_text_recognition")
+        toggleNode.performScrollTo()
+        toggleNode.assertIsDisplayed()
+        toggleNode.assertTextContains("Text Recognition (OCR)")
+
+        // Toggle it OFF
+        toggleNode.performClick()
+        composeTestRule.waitForIdle()
+        org.junit.Assert.assertFalse(CropFeaturePreferenceManager.isTextRecognitionEnabled(context))
+
+        // Toggle it back ON
+        toggleNode.performClick()
+        composeTestRule.waitForIdle()
+        assertTrue(CropFeaturePreferenceManager.isTextRecognitionEnabled(context))
     }
 }

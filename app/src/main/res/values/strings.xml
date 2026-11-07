@@ -91,6 +91,8 @@
     <string name="section_crop_features">Crop Modes &amp; Actions</string>
     <string name="feature_batch_select_title">Batch Select Mode</string>
     <string name="feature_batch_select_desc">Collect multiple crops into temporary batch to share or save all at once</string>
+    <string name="feature_ocr_toggle_title">Text Recognition (OCR)</string>
+    <string name="feature_ocr_toggle_desc">Show text recognition button above selection box to extract, copy, and search text</string>
 
     <!-- Circle to Search OCR Mode -->
     <string name="ocr_cts_title">Text Select</string>

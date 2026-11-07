@@ -14,6 +14,7 @@ object CropFeaturePreferenceManager {
     private const val PREFS_NAME = "snapcrop_feature_prefs"
     private const val KEY_BATCH_SELECT = "feature_batch_select"
     private const val KEY_LONG_SCREENSHOT = "feature_long_screenshot"
+    private const val KEY_TEXT_RECOGNITION = "feature_text_recognition"
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -33,5 +34,13 @@ object CropFeaturePreferenceManager {
 
     fun setLongScreenshotEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_LONG_SCREENSHOT, enabled).apply()
+    }
+
+    fun isTextRecognitionEnabled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_TEXT_RECOGNITION, true)
+    }
+
+    fun setTextRecognitionEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_TEXT_RECOGNITION, enabled).apply()
     }
 }
